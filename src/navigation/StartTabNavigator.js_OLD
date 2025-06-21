@@ -1,0 +1,27 @@
+// FILE: src/navigation/StartTabNavigator.js
+import React from 'react';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import SummaryScreen from '../screens/start/SummaryScreen';
+import DashboardScreen from '../screens/start/DashboardScreen';
+import AnalyticsScreen from '../screens/start/AnalyticsScreen';
+import { colors } from '../utils/styles';
+
+const Tab = createMaterialTopTabNavigator();
+
+export default function StartTabNavigator() {
+  return (
+    <Tab.Navigator
+      initialRouteName="Dashboard"
+      screenOptions={{
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarIndicatorStyle: { backgroundColor: colors.primary },
+        tabBarLabelStyle: { fontWeight: 'bold' },
+      }}
+    >
+      <Tab.Screen name="Summary" component={SummaryScreen} options={{ title: 'Suvestinė' }}/>
+      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Skydelis' }}/>
+      <Tab.Screen name="Analytics" component={AnalyticsScreen} options={{ title: 'Analitika' }}/>
+    </Tab.Navigator>
+  );
+}

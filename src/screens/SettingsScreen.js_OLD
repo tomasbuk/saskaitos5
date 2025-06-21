@@ -1,0 +1,85 @@
+// FILE: src/screens/SettingsScreen.js
+import React, { useState, useContext } from 'react';
+import { View, Text, TextInput, ScrollView, TouchableOpacity, FlatList, Alert, StyleSheet, Switch, Platform, UIManager, LayoutAnimation } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SettingsContext } from '../contexts/SettingsContext';
+import { CashContext } from '../contexts/CashContext';
+import { styles as globalStyles, colors, spacing, borderRadius, typography } from '../utils/styles';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const CollapsibleSection = ({ title, children, startOpen = false }) => {
+    const [isOpen, setIsOpen] = useState(startOpen);
+    const toggleOpen = () => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setIsOpen(!isOpen); };
+    return (
+        <View style={styles.collapsibleContainer}>
+            <TouchableOpacity onPress={toggleOpen} style={styles.collapsibleHeader}><Text style={styles.collapsibleHeaderText}>{title}</Text><Text style={styles.collapsibleIcon}>{isOpen ? '▲' : '▼'}</Text></TouchableOpacity>
+            {isOpen && <View style={styles.collapsibleContent}>{children}</View>}
+        </View>
+    );
+};
+const SettingsListManager = ({ options, setOptions }) => {
+    const [newItem, setNewItem] = useState('');
+    const handleAddItem = () => { const trimmedItem = newItem.trim(); if (trimmedItem === '') { return Alert.alert('Klaida', 'Reikšmė negali būti tuščia.'); } if (options.some(option => option.toLowerCase() === trimmedItem.toLowerCase())) { return Alert.alert('Klaida', 'Tokia reikšmė jau egzistuoja sąraše.'); } setOptions(prev => [trimmedItem, ...prev].sort((a, b) => a.localeCompare(b))); setNewItem(''); };
+    const handleRemoveItem = (itemToRemove) => { Alert.alert('Ištrinti', `Ar tikrai norite ištrinti "${itemToRemove}"?`, [{ text: 'Atšaukti', style: 'cancel' }, { text: 'Ištrinti', style: 'destructive', onPress: () => setOptions(prev => prev.filter(item => item !== itemToRemove)) }]); };
+    return (
+        <View><View style={styles.inputContainer}><TextInput style={styles.input} placeholder="Įveskite naują reikšmę..." value={newItem} onChangeText={setNewItem} /><TouchableOpacity style={styles.addButton} onPress={handleAddItem}><Text style={styles.addButtonText}>+</Text></TouchableOpacity></View><FlatList style={{ maxHeight: 250 }} nestedScrollEnabled={true} data={options} keyExtractor={(item) => item} renderItem={({ item }) => ( <View style={styles.listItem}><Text style={styles.listItemText}>{item}</Text><TouchableOpacity onPress={() => handleRemoveItem(item)}><Text style={styles.removeButtonText}>⊗</Text></TouchableOpacity></View> )} ListEmptyComponent={<Text style={styles.emptyListText}>Sąrašas tuščias.</Text>} /></View>
+    );
+};
+
+export default function SettingsScreen() {
+    const settings = useContext(SettingsContext);
+    const cash = useContext(CashContext);
+    const handleClearData = () => { Alert.alert("Dėmesio! Visi duomenys bus ištrinti!", "Ar tikrai norite ištrinti visas sąskaitas, operacijas ir nustatymus? Šio veiksmo negalėsite atšaukti.", [{ text: 'Atšaukti', style: 'cancel' }, { text: 'Ištrinti viską', style: 'destructive', onPress: async () => { try { await AsyncStorage.clear(); Alert.alert('Sėkmė', 'Visi duomenys ištrinti. Perkraukite programėlę, kad pamatytumėte pakeitimus.'); } catch (e) { Alert.alert('Klaida', 'Nepavyko išvalyti duomenų.'); }}}]);};
+    const handleBalanceChange = (text, setter) => { const num = text.replace(/[^0-9.,]/g, '').replace(',', '.'); setter(num); };
+    const handleBalanceEndEditing = (text, setter, initialValue) => { const num = parseFloat(text); if (isNaN(num)) { setter(initialValue); } else { setter(num); }};
+    return (
+        <ScrollView style={globalStyles.screenContent}>
+            <View style={{paddingVertical: 16, paddingBottom: 50}}>
+                <Text style={globalStyles.inputTitle}>Programėlės Nustatymai</Text>
+                <CollapsibleSection title="Operacijų Valdymas" startOpen={true}>
+                    <View style={styles.switchContainer}>
+                        <Text style={styles.switchLabel}>Trinant operaciją, kurti atvirkštinį įrašą?</Text>
+                        <Switch trackColor={{ false: "#767577", true: colors.accent }} thumbColor={settings.useReversalTransactions ? colors.surface : "#f4f3f4"} onValueChange={settings.setUseReversalTransactions} value={settings.useReversalTransactions} />
+                    </View>
+                    <Text style={styles.switchDescription}>(Rekomenduojama. Išjungus, operacijos bus trinamos negrįžtamai, o balansai NEBUS perskaičiuoti.)</Text>
+                    <View style={styles.switchContainer}>
+                        <Text style={styles.switchLabel}>Leisti trinti atšauktų operacijų įrašus?</Text>
+                        <Switch trackColor={{ false: "#767577", true: colors.warning }} thumbColor={settings.allowDeletingReversals ? colors.surface : "#f4f3f4"} onValueChange={settings.setAllowDeletingReversals} value={settings.allowDeletingReversals} />
+                    </View>
+                    <Text style={styles.switchDescription}>(Pavojinga! Skirta tik "išvalyti" istoriją. Gali pažeisti atskaitomybę. Veikia kartu su aukščiau esančiu nustatymu.)</Text>
+                </CollapsibleSection>
+                <CollapsibleSection title="Pradinių Likučių Nustatymas"><Text style={globalStyles.inputLabel}>Kasos likutis (EUR)</Text><TextInput style={globalStyles.input} value={String(cash.cashRegisterBalance)} onChangeText={(text) => handleBalanceChange(text, cash.setCashRegisterBalance)} onEndEditing={(e) => handleBalanceEndEditing(e.nativeEvent.text, cash.setCashRegisterBalance, cash.cashRegisterBalance)} keyboardType="decimal-pad"/><Text style={globalStyles.inputLabel}>Seifo likutis (EUR)</Text><TextInput style={globalStyles.input} value={String(cash.safeBalance)} onChangeText={(text) => handleBalanceChange(text, cash.setSafeBalance)} onEndEditing={(e) => handleBalanceEndEditing(e.nativeEvent.text, cash.setSafeBalance, cash.safeBalance)} keyboardType="decimal-pad"/><Text style={globalStyles.inputLabel}>Banko likutis (EUR)</Text><TextInput style={globalStyles.input} value={String(cash.bankBalance)} onChangeText={(text) => handleBalanceChange(text, cash.setBankBalance)} onEndEditing={(e) => handleBalanceEndEditing(e.nativeEvent.text, cash.setBankBalance, cash.bankBalance)} keyboardType="decimal-pad"/></CollapsibleSection>
+                <CollapsibleSection title="Sąskaitų Serijos Nustatymai"><Text style={globalStyles.inputLabel}>Išrašomų sąskaitų serija (pvz., GK-)</Text><TextInput style={globalStyles.input} value={settings.draftInvoiceSeries} onChangeText={settings.setDraftInvoiceSeries}/><Text style={globalStyles.inputLabel}>Paskutinis išrašytos sąskaitos numeris</Text><TextInput style={globalStyles.input} value={settings.draftInvoiceLastNumber} onChangeText={settings.setDraftInvoiceLastNumber} keyboardType="number-pad"/></CollapsibleSection>
+                <CollapsibleSection title="Antraščių Tekstai (PDF Eksportui)"><Text style={globalStyles.inputLabel}>Antraštės tekstas (kairė)</Text><TextInput style={globalStyles.input} value={settings.headerLeftText} onChangeText={settings.setHeaderLeftText}/><Text style={globalStyles.inputLabel}>Antraštės tekstas (dešinė)</Text><TextInput style={globalStyles.input} value={settings.headerRightText} onChangeText={settings.setHeaderRightText}/></CollapsibleSection>
+                <CollapsibleSection title="Tiekėjų Valdymas"><SettingsListManager options={settings.tiekejaiOptions} setOptions={settings.setTiekejaiOptions} /></CollapsibleSection>
+                <CollapsibleSection title="Pirkėjų Valdymas"><SettingsListManager options={settings.pirkejaiOptions} setOptions={settings.setPirkejaiOptions} /></CollapsibleSection>
+                <CollapsibleSection title="Mokėjimo Paskirčių Valdymas"><SettingsListManager options={settings.mokejimoPaskirtisOptions} setOptions={settings.setMokejimoPaskirtisOptions} /></CollapsibleSection>
+                <CollapsibleSection title="Sąskaitų Rūšių Valdymas"><SettingsListManager options={settings.rusysOptions} setOptions={settings.setRusysOptions} /></CollapsibleSection>
+                <CollapsibleSection title="Sąskaitų Būsenų Valdymas"><SettingsListManager options={settings.busenaOptions} setOptions={settings.setBusenaOptions} /></CollapsibleSection>
+                <CollapsibleSection title="Pavojinga Zona"><TouchableOpacity style={[globalStyles.button, {backgroundColor: colors.danger}]} onPress={handleClearData}><Text style={globalStyles.buttonText}>Išvalyti visus duomenis</Text></TouchableOpacity><Text style={{color: colors.textSecondary, textAlign: 'center', marginTop: 8}}>Atsargiai! Šis veiksmas ištrins visą programėlės atmintį.</Text></CollapsibleSection>
+            </View>
+        </ScrollView>
+    );
+}
+
+const styles = StyleSheet.create({
+    collapsibleContainer: { ...globalStyles.inputSection, marginHorizontal: 16, marginBottom: 16, padding: 0 },
+    collapsibleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
+    collapsibleHeaderText: { ...globalStyles.inputTitle, textAlign: 'left', fontSize: 18, marginBottom: 0 },
+    collapsibleIcon: { fontSize: 20, color: colors.primary },
+    collapsibleContent: { padding: 16, borderTopWidth: 1, borderTopColor: colors.border },
+    inputContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+    input: { ...globalStyles.input, flex: 1, marginBottom: 0, marginRight: 8 },
+    addButton: { backgroundColor: colors.primary, width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
+    addButtonText: { color: 'white', fontSize: 24, fontWeight: 'bold' },
+    listItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+    listItemText: { fontSize: 16, color: colors.textPrimary, flexShrink: 1, marginRight: 8 },
+    removeButtonText: { color: colors.danger, fontSize: 24 },
+    emptyListText: { textAlign: 'center', color: colors.textSecondary, padding: 10 },
+    switchContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.small,},
+    switchLabel: { ...globalStyles.inputLabel, flex: 1, marginRight: spacing.medium, marginBottom: 0,},
+    switchDescription: { ...typography.caption, color: colors.textSecondary, fontStyle: 'italic', marginTop: spacing.small, paddingBottom: spacing.medium, borderBottomWidth: 1, borderBottomColor: colors.border },
+});

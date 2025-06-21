@@ -1,0 +1,26 @@
+// FILE: src/constants/index.js
+export const STORAGE_KEY_PREFIX = 'saskaitu_programele_';
+export const STORAGE_KEY_INVOICES = STORAGE_KEY_PREFIX + 'invoices_data';
+export const STORAGE_KEY_DRAFT_INVOICES = STORAGE_KEY_PREFIX + 'draft_invoices_data';
+export const STORAGE_KEY_SUPPLIERS = STORAGE_KEY_PREFIX + 'suppliers_data';
+export const STORAGE_KEY_BUYERS = STORAGE_KEY_PREFIX + 'buyers_data';
+export const STORAGE_KEY_RUSYS = STORAGE_KEY_PREFIX + 'rusys_options';
+export const STORAGE_KEY_BUSENA = STORAGE_KEY_PREFIX + 'busena_options';
+export const STORAGE_KEY_MOKEJIMO_PASKIRTIS = STORAGE_KEY_PREFIX + 'mokejimo_paskirtis_options';
+export const STORAGE_KEY_DRAFT_INVOICE_SERIES = STORAGE_KEY_PREFIX + 'draft_invoice_series';
+export const STORAGE_KEY_DRAFT_INVOICE_LAST_NUMBER = STORAGE_KEY_PREFIX + 'draft_invoice_last_number';
+export const STORAGE_KEY_TRANSACTIONS = STORAGE_KEY_PREFIX + 'cash_register_transactions';
+export const STORAGE_KEY_CURRENT_CASH_REGISTER_BALANCE = STORAGE_KEY_PREFIX + 'current_cash_register_balance';
+export const STORAGE_KEY_CURRENT_SAFE_BALANCE = STORAGE_KEY_PREFIX + 'current_safe_balance';
+export const STORAGE_KEY_CURRENT_BANK_BALANCE = STORAGE_KEY_PREFIX + 'current_bank_balance';
+export const STORAGE_KEY_HEADER_LEFT = STORAGE_KEY_PREFIX + 'header_left';
+export const STORAGE_KEY_HEADER_RIGHT = STORAGE_KEY_PREFIX + 'header_right';
+export const STORAGE_KEY_CASH_SNAPSHOTS = STORAGE_KEY_PREFIX + 'cash_snapshots_data';
+export const STORAGE_KEY_USE_REVERSAL_TRANSACTIONS = STORAGE_KEY_PREFIX + 'use_reversal_transactions';
+export const STORAGE_KEY_ALLOW_DELETING_REVERSALS = STORAGE_KEY_PREFIX + 'allow_deleting_reversals';
+
+export const initialRusysOptions = ['Pardavimai', 'Išlaidos', 'Miksas'];
+export const initialBusenaOptions = ['Neapmokėta', 'Apmokėta', 'Nuosavos lėšos', 'Dalinai apmokėta'];
+export const initialTiekejaiOptions = ['Rugiagėlė', 'Mantinga', 'Sanitex', 'Kučmarskienės', 'Žemaitijos pienas'];
+export const initialMokejimoPaskirtisOptions = ['Už prekes', 'Už paslaugas', 'Už nuomą', 'Už kurą', 'Kitos'];
+export const initialPirkejaiOptions = ['Maxima', 'Rimi', 'Iki', 'Lidl', 'Norfa'];

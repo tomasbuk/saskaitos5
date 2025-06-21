@@ -1,0 +1,1767 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ScrollView,
+  Platform,
+  Linking,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback,
+  Modal, // Pridėtas Modal komponentas redagavimo formai
+} from 'react-native';
+
+// Sąrašai
+const RUSYS_OPTIONS = ['Pardavimai', 'Išlaidos', 'Miksas'];
+const BUSENA_OPTIONS = ['Neapmokėta', 'Apmokėta', 'Nuosavos lėšos', 'Dalinai apmokėta'];
+const TIEKEJAI_OPTIONS = ['Rugiagėlė', 'Mantinga', 'Sanitex', 'Kučmarskienės', 'Žemaitijos pienas'];
+const MOKEJIMO_PASKIRTIS_OPTIONS = ['Už prekes', 'Už paslaugas', 'Už nuomą', 'Už kurą', 'Kitos'];
+
+// Pagalbinė funkcija atsitiktinėms sąskaitoms generuoti
+const generateRandomInvoices = (count) => {
+  const invoices = [];
+  const now = new Date();
+  const currentYear = now.getFullYear();
+
+  const startDate = new Date(currentYear, 3, 1);
+  const endDate = now;
+
+  const maxDateTimestamp = endDate.getTime();
+  const minDateTimestamp = startDate.getTime();
+
+  for (let i = 0; i < count; i++) {
+    const randomTimestamp = minDateTimestamp + Math.random() * (maxDateTimestamp - minDateTimestamp);
+    const randomDateObj = new Date(randomTimestamp);
+    const randomDate = `${randomDateObj.getFullYear()}-${String(randomDateObj.getMonth() + 1).padStart(2, '0')}-${String(randomDateObj.getDate()).padStart(2, '0')}`;
+
+    const randomSaskaitosNr = `SF-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+    const randomTiekejas = TIEKEJAI_OPTIONS[Math.floor(Math.random() * TIEKEJAI_OPTIONS.length)];
+    const randomPaskirtis = MOKEJIMO_PASKIRTIS_OPTIONS[Math.floor(Math.random() * MOKEJIMO_PASKIRTIS_OPTIONS.length)];
+    const randomSuma = parseFloat((Math.random() * 40 + 10).toFixed(2)); // Sumažinta sumas iki 50 EUR (nuo 10 iki 50)
+    const randomRusis = RUSYS_OPTIONS[Math.floor(Math.random() * RUSYS_OPTIONS.length)];
+
+    // Randomly pick one of the BUSENA_OPTIONS to set status and paidSuma
+    const randomBusenaIndex = Math.floor(Math.random() * BUSENA_OPTIONS.length);
+    let randomBusena = BUSENA_OPTIONS[randomBusenaIndex];
+
+    let paidSuma = 0;
+    if (randomBusena === 'Apmokėta' || randomBusena === 'Nuosavos lėšos') {
+      paidSuma = randomSuma;
+    } else if (randomBusena === 'Dalinai apmokėta') {
+      // Ensure paidSuma is > 0 and < randomSuma
+      if (randomSuma > 0) {
+        paidSuma = parseFloat((Math.random() * randomSuma * 0.8 + 0.1).toFixed(2)); // Between 10% and 90% of total
+        if (paidSuma >= randomSuma) { // Adjust if it somehow became equal or more due to toFixed
+            paidSuma = parseFloat((randomSuma * 0.5).toFixed(2));
+        }
+      } else {
+        paidSuma = 0;
+      }
+    } else { // Neapmokėta
+      paidSuma = 0;
+    }
+
+    const randomComment = Math.random() > 0.7 ? `Atsitiktinis komentaras apie ${randomPaskirtis}.` : '';
+
+    invoices.push({
+      id: Date.now() + i,
+      data: randomDate,
+      saskaitosNr: randomSaskaitosNr,
+      tiekejas: randomTiekejas,
+      mokejimoPaskirtis: randomPaskirtis,
+      suma: randomSuma,
+      paidSuma: paidSuma, // Add paidSuma here
+      rusis: randomRusis,
+      busena: randomBusena,
+      createdAt: new Date().toISOString(),
+      comment: randomComment,
+    });
+  }
+  return invoices.sort((a, b) => new Date(b.data) - new Date(a.data));
+};
+
+// Pagalbinė funkcija, grąžinanti fono spalvą pagal būseną
+const getBusenaColor = (busena) => {
+  switch (busena) {
+    case 'Apmokėta':
+      return '#d4edda';
+    case 'Neapmokėta':
+      return '#f8d7da';
+    case 'Nuosavos lėšos':
+      return '#e2e3e5';
+    case 'Dalinai apmokėta':
+      return '#fffacd'; // Švelniai geltona spalva
+    default:
+      return '#e9f5ff';
+  }
+};
+
+// --- Komponentas: Sąskaitos redagavimo modalas ---
+function EditInvoiceModal({ visible, onClose, invoice, onSave, uniqueSuppliers, uniquePaymentPurposes }) {
+  const [data, setData] = useState(invoice ? invoice.data : '');
+  const [saskaitosNr, setSaskaitosNr] = useState(invoice ? invoice.saskaitosNr : '');
+  const [tiekejas, setTiekejas] = useState(invoice ? invoice.tiekejas : '');
+  const [mokejimoPaskirtis, setMokejimoPaskirtis] = useState(invoice ? invoice.mokejimoPaskirtis : '');
+  const [suma, setSuma] = useState(invoice ? invoice.suma.toString() : '');
+  const [paidSuma, setPaidSuma] = useState(invoice ? (invoice.paidSuma || 0).toString() : '0'); // New paidSuma state
+  const [rusis, setRusis] = useState(invoice ? invoice.rusis : RUSYS_OPTIONS[0]);
+  const [busena, setBusena] = useState(invoice ? invoice.busena : BUSENA_OPTIONS[0]); // Keep busena state
+  const [comment, setComment] = useState(invoice ? invoice.comment : '');
+
+  const [focusedInput, setFocusedInput] = useState(null);
+
+  const tiekejasRef = useRef(null);
+  const paskirtisRef = useRef(null);
+  const rusisRef = useRef(null);
+  const busenaRef = useRef(null);
+
+  useEffect(() => {
+    if (invoice) {
+      setData(invoice.data);
+      setSaskaitosNr(invoice.saskaitosNr);
+      setTiekejas(invoice.tiekejas);
+      setMokejimoPaskirtis(invoice.mokejimoPaskirtis);
+      setSuma(invoice.suma.toString());
+      setPaidSuma((invoice.paidSuma || 0).toString()); // Initialize paidSuma
+      setRusis(invoice.rusis);
+      setBusena(invoice.busena);
+      setComment(invoice.comment || '');
+    }
+  }, [invoice]);
+
+  const getSuggestions = (text, options) => {
+    if (text.length > 0) {
+      return options.filter(
+        (option) => option.toLowerCase().includes(text.toLowerCase())
+      );
+    }
+    return [];
+  };
+
+  const selectSuggestion = (setter, ref, value) => {
+    setter(value);
+    setFocusedInput(null);
+    if (ref.current) {
+      ref.current.blur();
+    }
+    Keyboard.dismiss();
+  };
+
+  const handleSave = () => {
+    if (
+      !data ||
+      !saskaitosNr ||
+      !tiekejas ||
+      !mokejimoPaskirtis ||
+      !suma ||
+      !paidSuma || // Validate paidSuma
+      !rusis ||
+      !busena
+    ) {
+      Alert.alert('Klaida', 'Prašome užpildyti visus laukus!');
+      return;
+    }
+
+    const parsedSuma = parseFloat(suma.replace(',', '.'));
+    const parsedPaidSuma = parseFloat(paidSuma.replace(',', '.')); // Parse paidSuma
+
+    if (isNaN(parsedSuma) || parsedSuma <= 0) {
+      Alert.alert('Klaida', 'Suma turi būti teigiamas skaičius.');
+      return;
+    }
+
+    if (isNaN(parsedPaidSuma) || parsedPaidSuma < 0) { // paidSuma must be non-negative
+      Alert.alert('Klaida', 'Apmokėta suma turi būti teigiamas skaičius arba nulis.');
+      return;
+    }
+
+    if (parsedPaidSuma > parsedSuma) {
+        Alert.alert('Klaida', 'Apmokėta suma negali būti didesnė už bendrą sąskaitos sumą.');
+        return;
+    }
+
+    let newBusena = busena; // Start with the current/selected busena
+    if (parsedPaidSuma === parsedSuma) {
+        newBusena = 'Apmokėta';
+    } else if (parsedPaidSuma > 0 && parsedPaidSuma < parsedSuma) {
+        newBusena = 'Dalinai apmokėta';
+    } else if (parsedPaidSuma === 0 && parsedSuma > 0) {
+        newBusena = 'Neapmokėta';
+    }
+
+    onSave(invoice.id, {
+      data,
+      saskaitosNr,
+      tiekejas,
+      mokejimoPaskirtis,
+      suma: parsedSuma,
+      paidSuma: parsedPaidSuma, // Pass paidSuma to onSave
+      rusis,
+      busena: newBusena, // Pass the determined busena
+      comment,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalBackground}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView contentContainerStyle={styles.modalContainer}>
+            <View style={styles.inputSection}>
+              <Text style={styles.inputTitle}>Redaguoti Sąskaitą</Text>
+
+              <Text style={styles.inputLabel}>Data (YYYY-MM-DD):</Text>
+              <TextInput
+                style={styles.input}
+                value={data}
+                onChangeText={setData}
+                placeholder="pvz., 2024-06-16"
+                keyboardType="numbers-and-punctuation"
+              />
+
+              <Text style={styles.inputLabel}>Sąskaitos Nr.:</Text>
+              <TextInput
+                style={styles.input}
+                value={saskaitosNr}
+                onChangeText={setSaskaitosNr}
+                placeholder="pvz., SF-2024-001"
+              />
+
+              <Text style={styles.inputLabel}>Tiekėjas:</Text>
+              <TextInput
+                ref={tiekejasRef}
+                style={styles.input}
+                value={tiekejas}
+                onChangeText={setTiekejas}
+                placeholder="pvz., UAB Gamintojas"
+                onFocus={() => setFocusedInput('tiekejas')}
+                onBlur={() => setFocusedInput(null)}
+              />
+              {focusedInput === 'tiekejas' && getSuggestions(tiekejas, uniqueSuppliers).length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <FlatList
+                    data={getSuggestions(tiekejas, uniqueSuppliers)}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.suggestionItem}
+                        onPress={() => selectSuggestion(setTiekejas, tiekejasRef, item)}
+                      >
+                        <Text style={styles.suggestionText}>{item}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Mokėjimo paskirtis:</Text>
+              <TextInput
+                ref={paskirtisRef}
+                style={styles.input}
+                value={mokejimoPaskirtis}
+                onChangeText={setMokejimoPaskirtis}
+                placeholder="pvz., Už prekes"
+                onFocus={() => setFocusedInput('paskirtis')}
+                onBlur={() => setFocusedInput(null)}
+              />
+              {/* Ištaisyta iš setMokejimoPokejimoPaskirtis į setMokejimoPaskirtis */}
+              {focusedInput === 'paskirtis' && getSuggestions(mokejimoPaskirtis, uniquePaymentPurposes).length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <FlatList
+                    data={getSuggestions(mokejimoPaskirtis, uniquePaymentPurposes)}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.suggestionItem}
+                        onPress={() => selectSuggestion(setMokejimoPaskirtis, paskirtisRef, item)}
+                      >
+                        <Text style={styles.suggestionText}>{item}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Suma:</Text>
+              <TextInput
+                style={styles.input}
+                value={suma}
+                onChangeText={(text) => setSuma(text.replace(/[^0-9.,]/g, ''))}
+                placeholder="pvz., 123.45"
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.inputLabel}>Apmokėta suma:</Text>
+              <TextInput
+                style={styles.input}
+                value={paidSuma}
+                onChangeText={(text) => setPaidSuma(text.replace(/[^0-9.,]/g, ''))}
+                placeholder="pvz., 50.00"
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.inputLabel}>Rūšis:</Text>
+              <TextInput
+                ref={rusisRef}
+                style={styles.input}
+                value={rusis}
+                onChangeText={setRusis}
+                placeholder="pvz., Pardavimai"
+                onFocus={() => setFocusedInput('rusis')}
+                onBlur={() => setFocusedInput(null)}
+              />
+              {focusedInput === 'rusis' && getSuggestions(rusis, RUSYS_OPTIONS).length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <FlatList
+                    data={getSuggestions(rusis, RUSYS_OPTIONS)}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.suggestionItem}
+                        onPress={() => selectSuggestion(setRusis, rusisRef, item)}
+                      >
+                        <Text style={styles.suggestionText}>{item}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Būsena:</Text>
+              <TextInput
+                ref={busenaRef}
+                style={styles.input}
+                value={busena}
+                onChangeText={setBusena}
+                placeholder="pvz., Neapmokėta"
+                onFocus={() => setFocusedInput('busena')}
+                onBlur={() => setFocusedInput(null)}
+              />
+              {focusedInput === 'busena' && getSuggestions(busena, BUSENA_OPTIONS).length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <FlatList
+                    data={getSuggestions(busena, BUSENA_OPTIONS)}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.suggestionItem}
+                        onPress={() => selectSuggestion(setBusena, busenaRef, item)}
+                      >
+                        <Text style={styles.suggestionText}>{item}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Komentarai:</Text>
+              <TextInput
+                style={styles.commentInput}
+                value={comment}
+                onChangeText={setComment}
+                placeholder="Įveskite komentarą..."
+                multiline={true}
+                numberOfLines={3}
+              />
+
+              <TouchableOpacity style={styles.button} onPress={handleSave}>
+                <Text style={styles.buttonText}>Išsaugoti pakeitimus</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose}>
+                <Text style={styles.buttonText}>Atšaukti</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+
+// --- Komponentas: Pradžios langas ---
+function StartScreen({ onAddSaskaita, totalCounts, uniqueSuppliers, uniquePaymentPurposes }) {
+  const [showInputForm, setShowInputForm] = useState(false);
+
+  const [data, setData] = useState('');
+  const [saskaitosNr, setSaskaitosNr] = useState('');
+  const [tiekejas, setTiekejas] = useState('');
+  const [mokejimoPaskirtis, setMokejimoPaskirtis] = useState('');
+  const [suma, setSuma] = useState('');
+  const [paidSuma, setPaidSuma] = useState('0'); // New paidSuma state
+  const [rusis, setRusis] = useState(RUSYS_OPTIONS[0]);
+  const [busena, setBusena] = useState(BUSENA_OPTIONS[0]); // Keep busena state
+
+  const [focusedInput, setFocusedInput] = useState(null);
+
+  const tiekejasRef = useRef(null);
+  const paskirtisRef = useRef(null);
+  const rusisRef = useRef(null);
+  const busenaRef = useRef(null);
+
+
+  useEffect(() => {
+    setData(new Date().toISOString().split('T')[0]);
+  }, []);
+
+  const handleSubmit = () => {
+    if (
+      !data ||
+      !saskaitosNr ||
+      !tiekejas ||
+      !mokejimoPaskirtis ||
+      !suma ||
+      !paidSuma || // Validate paidSuma
+      !rusis ||
+      !busena
+    ) {
+      Alert.alert('Klaida', 'Prašome užpildyti visus laukus!');
+      return;
+    }
+
+    const parsedSuma = parseFloat(suma.replace(',', '.'));
+    const parsedPaidSuma = parseFloat(paidSuma.replace(',', '.')); // Parse paidSuma
+
+    if (isNaN(parsedSuma) || parsedSuma <= 0) {
+      Alert.alert('Klaida', 'Suma turi būti teigiamas skaičius.');
+      return;
+    }
+
+    if (isNaN(parsedPaidSuma) || parsedPaidSuma < 0) { // paidSuma must be non-negative
+      Alert.alert('Klaida', 'Apmokėta suma turi būti teigiamas skaičius arba nulis.');
+      return;
+    }
+
+    if (parsedPaidSuma > parsedSuma) {
+        Alert.alert('Klaida', 'Apmokėta suma negali būti didesnė už bendrą sąskaitos sumą.');
+        return;
+    }
+
+    let newBusena = busena; // Start with the current/selected busena
+    if (parsedPaidSuma === parsedSuma) {
+        newBusena = 'Apmokėta';
+    } else if (parsedPaidSuma > 0 && parsedPaidSuma < parsedSuma) {
+        newBusena = 'Dalinai apmokėta';
+    } else if (parsedPaidSuma === 0 && parsedSuma > 0) {
+        newBusena = 'Neapmokėta';
+    }
+
+    onAddSaskaita({
+      data,
+      saskaitosNr,
+      tiekejas,
+      mokejimoPaskirtis,
+      suma: parsedSuma,
+      paidSuma: parsedPaidSuma, // Pass paidSuma
+      rusis,
+      busena: newBusena, // Pass the determined busena
+      comment: '',
+    });
+
+    setData(new Date().toISOString().split('T')[0]);
+    setSaskaitosNr('');
+    setTiekejas('');
+    setMokejimoPaskirtis('');
+    setSuma('');
+    setPaidSuma('0'); // Reset paidSuma
+    setRusis(RUSYS_OPTIONS[0]);
+    setBusena(BUSENA_OPTIONS[0]);
+    setShowInputForm(false);
+  };
+
+  const getSuggestions = (text, options) => {
+    if (text.length > 0) {
+      return options.filter(
+        (option) => option.toLowerCase().includes(text.toLowerCase())
+      );
+    }
+    return [];
+  };
+
+  const selectSuggestion = (setter, ref, value) => {
+    setter(value);
+    setFocusedInput(null);
+    if (ref.current) {
+      ref.current.blur();
+    }
+    Keyboard.dismiss();
+  };
+
+
+  return (
+    <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setFocusedInput(null); }}>
+      <ScrollView style={styles.screenContent} keyboardShouldPersistTaps="always" contentContainerStyle={styles.scrollContentContainer}>
+        <View style={styles.summaryContainer}>
+          <Text style={styles.summaryTitle}>Bendra Sąskaitų Statistika</Text>
+          <Text style={styles.summaryText}>Apmokėta: {totalCounts.paidCount} sąsk. / {totalCounts.paidSum.toFixed(2)} EUR</Text>
+          <Text style={styles.summaryText}>Neapmokėta: {totalCounts.unpaidCount} sąsk. / {totalCounts.unpaidSum.toFixed(2)} EUR</Text>
+          <Text style={styles.summaryText}>Dalinai apmokėta: {totalCounts.partiallyPaidCount} sąsk. / {totalCounts.partiallyPaidSum.toFixed(2)} EUR</Text>
+          <Text style={styles.summaryTextBold}>Viso: {totalCounts.totalCount} sąsk. / {totalCounts.totalSum.toFixed(2)} EUR</Text>
+          <Text style={styles.summaryText}>Unikalių tiekėjų: {totalCounts.uniqueSuppliers}</Text>
+          <Text style={styles.summaryText}>Šio mėn. sąskaitų: {totalCounts.currentMonthCount} / {totalCounts.currentMonthSum.toFixed(2)} EUR</Text>
+          <Text style={styles.summaryText}>Praeito mėn. sąskaitų: {totalCounts.lastMonthCount} / {totalCounts.lastMonthSum.toFixed(2)} EUR</Text>
+        </View>
+
+        {!showInputForm && (
+          <TouchableOpacity style={styles.button} onPress={() => setShowInputForm(true)}>
+            <Text style={styles.buttonText}>Įvesti Naują Sąskaitą</Text>
+          </TouchableOpacity>
+        )}
+
+        {showInputForm && (
+            <View style={styles.inputSection}>
+              <Text style={styles.inputTitle}>Naujos Sąskaitos Įvedimas</Text>
+              <Text style={styles.inputLabel}>Data (YYYY-MM-DD):</Text>
+              <TextInput
+                style={styles.input}
+                value={data}
+                onChangeText={setData}
+                placeholder="pvz., 2024-06-16"
+                keyboardType="numbers-and-punctuation"
+              />
+
+              <Text style={styles.inputLabel}>Sąskaitos Nr.:</Text>
+              <TextInput
+                style={styles.input}
+                value={saskaitosNr}
+                onChangeText={setSaskaitosNr}
+                placeholder="pvz., SF-2024-001"
+              />
+
+              <Text style={styles.inputLabel}>Tiekėjas:</Text>
+              <TextInput
+                ref={tiekejasRef}
+                style={styles.input}
+                value={tiekejas}
+                onChangeText={setTiekejas}
+                placeholder="pvz., UAB Gamintojas"
+                onFocus={() => setFocusedInput('tiekejas')}
+                onBlur={() => setFocusedInput(null)}
+              />
+              {focusedInput === 'tiekejas' && getSuggestions(tiekejas, uniqueSuppliers).length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <FlatList
+                    data={getSuggestions(tiekejas, uniqueSuppliers)}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.suggestionItem}
+                        onPress={() => selectSuggestion(setTiekejas, tiekejasRef, item)}
+                      >
+                        <Text style={styles.suggestionText}>{item}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Mokėjimo paskirtis:</Text>
+              <TextInput
+                ref={paskirtisRef}
+                style={styles.input}
+                value={mokejimoPaskirtis}
+                onChangeText={setMokejimoPaskirtis}
+                placeholder="pvz., Už prekes"
+                onFocus={() => setFocusedInput('paskirtis')}
+                onBlur={() => setFocusedInput(null)}
+              />
+              {focusedInput === 'paskirtis' && getSuggestions(mokejimoPaskirtis, uniquePaymentPurposes).length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <FlatList
+                    data={getSuggestions(mokejimoPaskirtis, uniquePaymentPurposes)}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.suggestionItem}
+                        onPress={() => selectSuggestion(setMokejimoPaskirtis, paskirtisRef, item)}
+                      >
+                        <Text style={styles.suggestionText}>{item}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Suma:</Text>
+              <TextInput
+                style={styles.input}
+                value={suma}
+                onChangeText={(text) => setSuma(text.replace(/[^0-9.,]/g, ''))}
+                placeholder="pvz., 123.45"
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.inputLabel}>Apmokėta suma:</Text>
+              <TextInput
+                style={styles.input}
+                value={paidSuma}
+                onChangeText={(text) => setPaidSuma(text.replace(/[^0-9.,]/g, ''))}
+                placeholder="pvz., 50.00"
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.inputLabel}>Rūšis:</Text>
+              <TextInput
+                ref={rusisRef}
+                style={styles.input}
+                value={rusis}
+                onChangeText={setRusis}
+                placeholder="pvz., Pardavimai"
+                onFocus={() => setFocusedInput('rusis')}
+                onBlur={() => setFocusedInput(null)}
+              />
+              {focusedInput === 'rusis' && getSuggestions(rusis, RUSYS_OPTIONS).length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <FlatList
+                    data={getSuggestions(rusis, RUSYS_OPTIONS)}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.suggestionItem}
+                        onPress={() => selectSuggestion(setRusis, rusisRef, item)}
+                      >
+                        <Text style={styles.suggestionText}>{item}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Būsena:</Text>
+              <TextInput
+                ref={busenaRef}
+                style={styles.input}
+                value={busena}
+                onChangeText={setBusena}
+                placeholder="pvz., Neapmokėta"
+                onFocus={() => setFocusedInput('busena')}
+                onBlur={() => setFocusedInput(null)}
+              />
+              {focusedInput === 'busena' && getSuggestions(busena, BUSENA_OPTIONS).length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <FlatList
+                    data={getSuggestions(busena, BUSENA_OPTIONS)}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.suggestionItem}
+                        onPress={() => selectSuggestion(setBusena, busenaRef, item)}
+                      >
+                        <Text style={styles.suggestionText}>{item}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              <TouchableOpacity style={styles.button} onPress={handleSubmit}>
+                <Text style={styles.buttonText}>Pridėti Sąskaitą</Text>
+              </TouchableOpacity>
+            </View>
+        )}
+      </ScrollView>
+    </TouchableWithoutFeedback>
+  );
+}
+
+// --- Komponentas: Sąskaitų peržiūros langas ---
+function ViewInvoicesScreen({ saskaitos, onSaveComment, totalCounts, onUpdateInvoice, uniqueSuppliers, uniquePaymentPurposes }) {
+  const [expandedItemId, setExpandedItemId] = useState(null);
+  const [currentCommentText, setCurrentCommentText] = useState('');
+  const [filterTiekejas, setFilterTiekejas] = useState('');
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
+  const [editingInvoice, setEditingInvoice] = useState(null); // Nauja būsena redaguojamai sąskaitai
+
+  const toggleExpand = (item) => {
+    if (expandedItemId === item.id) {
+      setExpandedItemId(null);
+      setCurrentCommentText('');
+    } else {
+      setExpandedItemId(item.id);
+      setCurrentCommentText(item.comment || '');
+    }
+  };
+
+  const handleSaveCommentForInvoice = (itemId) => {
+    onUpdateInvoice(itemId, { comment: currentCommentText });
+    Alert.alert('Sėkmė', 'Komentaras išsaugotas!');
+  };
+
+  const handleEditInvoice = (invoice) => { // Dabar perduodame visą sąskaitos objektą
+    setEditingInvoice(invoice);
+  };
+
+  const handleSaveEditedInvoice = (id, updatedData) => {
+    onUpdateInvoice(id, updatedData);
+    setEditingInvoice(null); // Uždaryti redagavimo modalą
+    setExpandedItemId(null); // Sutraukti išplėstą elementą, jei buvo
+  };
+
+  const handleSelectInvoice = (itemId) => {
+    setSelectedInvoiceIds(prevSelected => {
+      if (prevSelected.includes(itemId)) {
+        return prevSelected.filter(id => id !== itemId);
+      } else {
+        return [...prevSelected, itemId];
+      }
+    });
+  };
+
+  const handleMarkSelectedAsPaid = () => {
+    if (selectedInvoiceIds.length === 0) {
+      Alert.alert('Pasirinkimas', 'Nepasirinkote jokių sąskaitų, kad pažymėtumėte apmokėta.');
+      return;
+    }
+
+    Alert.alert(
+      'Patvirtinti apmokėjimą',
+      `Ar tikrai norite pažymėti ${selectedInvoiceIds.length} sąskaitas kaip apmokėtas?`,
+      [
+        {
+          text: 'Atšaukti',
+          style: 'cancel',
+        },
+        {
+          text: 'Patvirtinti',
+          onPress: () => {
+            selectedInvoiceIds.forEach(id => {
+              // Retrieve the current invoice to get its sum for auto-setting paidSuma
+              const currentInvoice = saskaitos.find(s => s.id === id);
+              onUpdateInvoice(id, { busena: 'Apmokėta', paidSuma: currentInvoice ? currentInvoice.suma : 0 });
+            });
+            setSelectedInvoiceIds([]);
+            Alert.alert('Sėkmė', 'Pasirinktos sąskaitos pažymėtos kaip apmokėtos!');
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // Funkcija vienos sąskaitos būsenos keitimui
+  const handleChangeInvoiceStatus = (itemId, newStatus) => {
+    Alert.alert(
+      'Patvirtinti būsenos keitimą',
+      `Ar tikrai norite pakeisti šios sąskaitos būseną į "${newStatus}"?`,
+      [
+        {
+          text: 'Atšaukti',
+          style: 'cancel',
+        },
+        {
+          text: 'Patvirtinti',
+          onPress: () => {
+            const currentInvoice = saskaitos.find(s => s.id === itemId);
+            let updates = { busena: newStatus };
+
+            if (currentInvoice) {
+              if (newStatus === 'Apmokėta') {
+                updates.paidSuma = currentInvoice.suma;
+              } else if (newStatus === 'Neapmokėta') {
+                updates.paidSuma = 0;
+              }
+              // For 'Dalinai apmokėta' and 'Nuosavos lėšos', paidSuma is not automatically adjusted here.
+              // It's expected to be set manually via the edit modal if needed.
+            }
+
+            onUpdateInvoice(itemId, updates);
+            Alert.alert('Sėkmė', `Sąskaita pažymėta kaip ${newStatus}!`);
+            setExpandedItemId(null); // Sutraukti po veiksmo
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+
+  const filteredSaskaitos = saskaitos.filter(item =>
+    filterTiekejas === '' || item.tiekejas.toLowerCase().includes(filterTiekejas.toLowerCase())
+  );
+
+  const handleEmailExport = async () => {
+    const invoicesToSend = filteredSaskaitos.filter(item => selectedInvoiceIds.includes(item.id));
+
+    if (invoicesToSend.length === 0) {
+      Alert.alert('Eksportuoti', 'Nepasirinkote jokių sąskaitų el. paštui siųsti. Pasirinkite bent vieną sąskaitą.');
+      return;
+    }
+
+    const sortedForEmail = [...invoicesToSend].sort((a, b) => {
+      const busenaOrder = { 'Neapmokėta': 1, 'Dalinai apmokėta': 1.5, 'Apmokėta': 2, 'Nuosavos lėšos': 2 };
+      const busenaCompare = busenaOrder[a.busena] - busenaOrder[b.busena];
+      if (busenaCompare !== 0) {
+        return busenaCompare;
+      }
+      return new Date(b.data) - new Date(a.data);
+    });
+
+    let emailBody = "Filtruotų ir pasirinktų sąskaitų informacija:\n\n";
+    sortedForEmail.forEach((invoice, index) => {
+      emailBody += `Sąskaita ${index + 1}:\n`;
+      emailBody += `  Data: ${invoice.data}\n`;
+      emailBody += `  Tiekėjas: ${invoice.tiekejas}\n`;
+      emailBody += `  Suma: ${invoice.suma.toFixed(2)} EUR\n`;
+      emailBody += `  Apmokėta suma: ${(invoice.paidSuma || 0).toFixed(2)} EUR\n`; // Include paidSuma
+      emailBody += `  Būsena: ${invoice.busena}\n`;
+      if (invoice.comment) {
+        emailBody += `  Komentaras: ${invoice.comment}\n`;
+      }
+      emailBody += "\n";
+    });
+
+    const recipient = 'info@hotmail.lt';
+    const subject = 'Pasirinktų sąskaitų ataskaita';
+    const mailtoUrl = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
+
+    try {
+      const supported = await Linking.canOpenURL(mailtoUrl);
+      if (supported) {
+        await Linking.openURL(mailtoUrl);
+      } else {
+        Alert.alert('Klaida', 'Nepavyko atidaryti el. pašto programos. Patikrinkite, ar įdiegta el. pašto programa.');
+      }
+    } catch (error) {
+      Alert.alert('Klaida', 'Įvyko klaida bandant siųsti el. laišką: ' + error.message);
+    }
+  };
+
+  const renderItem = ({ item }) => {
+    const isExpanded = item.id === expandedItemId;
+    const isSelected = selectedInvoiceIds.includes(item.id);
+    return (
+      <TouchableOpacity
+        style={[
+          styles.saskaitaItem,
+          { backgroundColor: getBusenaColor(item.busena) },
+          isSelected && styles.selectedItemBorder
+        ]}
+        onPress={() => toggleExpand(item)}
+      >
+        <View style={styles.itemHeader}>
+          <TouchableOpacity onPress={() => handleSelectInvoice(item.id)} style={styles.checkboxContainer}>
+            <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+              {isSelected && <Text style={styles.checkboxTick}>✓</Text>}
+            </View>
+          </TouchableOpacity>
+          <View style={styles.itemHeaderTextContent}>
+            <Text style={styles.itemTextBold}>Data: {item.data}</Text>
+            <Text style={styles.itemText}>Tiekėjas: {item.tiekejas}</Text>
+            <Text style={styles.itemText}>Suma: {item.suma.toFixed(2)} EUR</Text>
+          </View>
+        </View>
+
+
+        {isExpanded && (
+          <View style={styles.expandedDetails}>
+            <Text style={styles.itemText}>Sąskaitos Nr.: {item.saskaitosNr}</Text>
+            <Text style={styles.itemText}>Paskirtis: {item.mokejimoPaskirtis}</Text>
+            <Text style={styles.itemText}>Rūšis: {item.rusis}</Text>
+            <Text style={styles.itemText}>Būsena: {item.busena}</Text>
+            <Text style={styles.itemText}>Apmokėta suma: ${(item.paidSuma || 0).toFixed(2)} EUR</Text> {/* Display paidSuma */}
+            <Text style={styles.itemUserId}>ID: {item.id} | Sukurta: {new Date(item.createdAt).toLocaleString('lt-LT')}</Text>
+
+            <TouchableOpacity style={styles.editButton} onPress={() => handleEditInvoice(item)}>
+              <Text style={styles.buttonText}>Redaguoti Sąskaitą</Text>
+            </TouchableOpacity>
+
+            {/* Mygtukai "Pažymėti apmokėta" ir "Pažymėti neapmokėta" pašalinti, nes būsena nustatoma automatiškai. */}
+            {/* Mygtukas "Pažymėti dalinai apmokėta" taip pat pašalintas. */}
+
+
+            <View style={styles.commentSection}>
+              <Text style={styles.inputLabel}>Komentarai:</Text>
+              <TextInput
+                style={styles.commentInput}
+                value={currentCommentText}
+                onChangeText={setCurrentCommentText}
+                placeholder="Įveskite komentarą..."
+                multiline={true}
+                numberOfLines={3}
+                onTouchStart={(e) => e.stopPropagation()}
+              />
+              <TouchableOpacity
+                style={styles.saveCommentButton}
+                onPress={() => handleSaveCommentForInvoice(item.id)}
+              >
+                <Text style={styles.buttonText}>Išsaugoti komentarą</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const RenderFlatListHeader = () => (
+    <>
+      <View style={styles.summaryContainer}>
+        <Text style={styles.summaryTitle}>Bendra Sąskaitų Statistika</Text>
+        <Text style={styles.summaryText}>Apmokėta: {totalCounts.paidCount} sąsk. / {totalCounts.paidSum.toFixed(2)} EUR</Text>
+        <Text style={styles.summaryText}>Neapmokėta: {totalCounts.unpaidCount} sąsk. / {totalCounts.unpaidSum.toFixed(2)} EUR</Text>
+        <Text style={styles.summaryText}>Dalinai apmokėta: {totalCounts.partiallyPaidCount} sąsk. / {totalCounts.partiallyPaidSum.toFixed(2)} EUR</Text>
+        <Text style={styles.summaryTextBold}>Viso: {totalCounts.totalCount} sąsk. / {totalCounts.totalSum.toFixed(2)} EUR</Text>
+      </View>
+
+      <TextInput
+        style={styles.filterInput}
+        value={filterTiekejas}
+        onChangeText={setFilterTiekejas}
+        placeholder="Filtruoti pagal tiekėją..."
+      />
+    </>
+  );
+
+  const RenderFlatListFooter = () => (
+    <View style={styles.listFooter}>
+      <TouchableOpacity style={[styles.button, styles.emailExportButton]} onPress={handleEmailExport}>
+        <Text style={styles.buttonText}>Siųsti el. paštu</Text>
+      </TouchableOpacity>
+      {selectedInvoiceIds.length > 0 && (
+        <TouchableOpacity style={[styles.button, styles.markPaidButton]} onPress={handleMarkSelectedAsPaid}>
+          <Text style={styles.buttonText}>Pažymėti pasirinktas apmokėtas</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  return (
+    <View style={styles.screenContent}>
+      {filteredSaskaitos.length === 0 ? (
+        <Text style={styles.noDataText}>Nėra įrašytų sąskaitų, atitinkančių filtrą.</Text>
+      ) : (
+        <FlatList
+          data={filteredSaskaitos}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id.toString()}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={RenderFlatListHeader}
+          ListFooterComponent={RenderFlatListFooter}
+        />
+      )}
+
+      {editingInvoice && (
+        <EditInvoiceModal
+          visible={!!editingInvoice}
+          onClose={() => setEditingInvoice(null)}
+          invoice={editingInvoice}
+          onSave={handleSaveEditedInvoice}
+          uniqueSuppliers={uniqueSuppliers}
+          uniquePaymentPurposes={uniquePaymentPurposes}
+        />
+      )}
+    </View>
+  );
+}
+
+// --- Komponentas: Neapmokėtų sąskaitų langas ---
+function UnpaidInvoicesScreen({ saskaitos, onSaveComment, totalCounts, onUpdateInvoice, uniqueSuppliers, uniquePaymentPurposes }) {
+  const [expandedItemId, setExpandedItemId] = useState(null);
+  const [currentCommentText, setCurrentCommentText] = useState('');
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
+  const [editingInvoice, setEditingInvoice] = useState(null); // Nauja būsena redaguojamai sąskaitai
+  const unpaidSaskaitos = saskaitos.filter(s => s.busena === 'Neapmokėta' || s.busena === 'Dalinai apmokėta'); // Įtraukiami dalinai apmokėti
+
+  const toggleExpand = (item) => {
+    if (expandedItemId === item.id) {
+      setExpandedItemId(null);
+      setCurrentCommentText('');
+    } else {
+      setExpandedItemId(item.id);
+      setCurrentCommentText(item.comment || '');
+    }
+  };
+
+  const handleSaveCommentForInvoice = (itemId) => {
+    onUpdateInvoice(itemId, { comment: currentCommentText });
+    Alert.alert('Sėkmė', 'Komentaras išsaugotas!');
+  };
+
+  const handleEditInvoice = (invoice) => { // Pakeista, kad priimtų visą sąskaitos objektą
+    setEditingInvoice(invoice);
+  };
+
+  const handleSaveEditedInvoice = (id, updatedData) => { // Nauja funkcija, skirta išsaugoti redaguotą sąskaitą
+    onUpdateInvoice(id, updatedData);
+    setEditingInvoice(null); // Uždaryti redagavimo modalą
+    setExpandedItemId(null); // Sutraukti išplėstą elementą, jei buvo
+  };
+
+  const handleSelectInvoice = (itemId) => {
+    setSelectedInvoiceIds(prevSelected => {
+      if (prevSelected.includes(itemId)) {
+        return prevSelected.filter(id => id !== itemId);
+      } else {
+        return [...prevSelected, itemId];
+      }
+    });
+  };
+
+  const handleMarkSelectedAsPaid = () => {
+    if (selectedInvoiceIds.length === 0) {
+      Alert.alert('Pasirinkimas', 'Nepasirinkote jokių sąskaitų, kad pažymėtumėte apmokėta.');
+      return;
+    }
+
+    Alert.alert(
+      'Patvirtinti apmokėjimą',
+      `Ar tikrai norite pažymėti ${selectedInvoiceIds.length} sąskaitas kaip apmokėtas?`,
+      [
+        {
+          text: 'Atšaukti',
+          style: 'cancel',
+        },
+        {
+          text: 'Patvirtinti',
+          onPress: () => {
+            selectedInvoiceIds.forEach(id => {
+              const currentInvoice = saskaitos.find(s => s.id === id);
+              onUpdateInvoice(id, { busena: 'Apmokėta', paidSuma: currentInvoice ? currentInvoice.suma : 0 });
+            });
+            setSelectedInvoiceIds([]);
+            Alert.alert('Sėkmė', 'Pasirinktos sąskaitos pažymėtos kaip apmokėtos!');
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // Funkcija vienos sąskaitos būsenos keitimui
+  const handleChangeInvoiceStatus = (itemId, newStatus) => {
+    Alert.alert(
+      'Patvirtinti būsenos keitimą',
+      `Ar tikrai norite pakeisti šios sąskaitos būseną į "${newStatus}"?`,
+      [
+        {
+          text: 'Atšaukti',
+          style: 'cancel',
+        },
+        {
+          text: 'Patvirtinti',
+          onPress: () => {
+            const currentInvoice = saskaitos.find(s => s.id === itemId);
+            let updates = { busena: newStatus };
+
+            if (currentInvoice) {
+              if (newStatus === 'Apmokėta') {
+                updates.paidSuma = currentInvoice.suma;
+              } else if (newStatus === 'Neapmokėta') {
+                updates.paidSuma = 0;
+              }
+            }
+
+            onUpdateInvoice(itemId, updates);
+            Alert.alert('Sėkmė', `Sąskaita pažymėta kaip ${newStatus}!`);
+            setExpandedItemId(null); // Sutraukti po veiksmo
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const handleEmailExport = async () => {
+    const invoicesToSend = unpaidSaskaitos.filter(item => selectedInvoiceIds.includes(item.id)); // Use unpaidSaskaitos
+
+    if (invoicesToSend.length === 0) {
+      Alert.alert('Eksportuoti', 'Nepasirinkote jokių sąskaitų el. paštui siųsti. Pasirinkite bent vieną sąskaitą.');
+      return;
+    }
+
+    const sortedForEmail = [...invoicesToSend].sort((a, b) => {
+      const busenaOrder = { 'Neapmokėta': 1, 'Dalinai apmokėta': 1.5, 'Apmokėta': 2, 'Nuosavos lėšos': 2 };
+      const busenaCompare = busenaOrder[a.busena] - busenaOrder[b.busena];
+      if (busenaCompare !== 0) {
+        return busenaCompare;
+      }
+      return new Date(b.data) - new Date(a.data);
+    });
+
+    let emailBody = "Filtruotų ir pasirinktų sąskaitų informacija:\n\n";
+    sortedForEmail.forEach((invoice, index) => {
+      emailBody += `Sąskaita ${index + 1}:\n`;
+      emailBody += `  Data: ${invoice.data}\n`;
+      emailBody += `  Tiekėjas: ${invoice.tiekejas}\n`;
+      emailBody += `  Suma: ${invoice.suma.toFixed(2)} EUR\n`;
+      emailBody += `  Apmokėta suma: ${(invoice.paidSuma || 0).toFixed(2)} EUR\n`; // Include paidSuma
+      emailBody += `  Būsena: ${invoice.busena}\n`;
+      if (invoice.comment) {
+        emailBody += `  Komentaras: ${invoice.comment}\n`;
+      }
+      emailBody += "\n";
+    });
+
+    const recipient = 'info@hotmail.lt';
+    const subject = 'Pasirinktų neapmokėtų sąskaitų ataskaita'; // Subject can be specific to unpaid
+    const mailtoUrl = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
+
+    try {
+      const supported = await Linking.canOpenURL(mailtoUrl);
+      if (supported) {
+        await Linking.openURL(mailtoUrl);
+      } else {
+        Alert.alert('Klaida', 'Nepavyko atidaryti el. pašto programos. Patikrinkite, ar įdiegta el. pašto programa.');
+      }
+    } catch (error) {
+      Alert.alert('Klaida', 'Įvyko klaida bandant siųsti el. laišką: ' + error.message);
+    }
+  };
+
+
+  const renderItem = ({ item }) => (
+    <View style={[styles.saskaitaItem, { backgroundColor: getBusenaColor(item.busena) }]}>
+      <TouchableOpacity
+        style={[styles.saskaitaItemContent, selectedInvoiceIds.includes(item.id) && styles.selectedItemBorder]}
+        onPress={() => toggleExpand(item)}
+      >
+        <View style={styles.itemHeader}>
+          <TouchableOpacity onPress={() => handleSelectInvoice(item.id)} style={styles.checkboxContainer}>
+            <View style={[styles.checkbox, selectedInvoiceIds.includes(item.id) && styles.checkboxSelected]}>
+              {selectedInvoiceIds.includes(item.id) && <Text style={styles.checkboxTick}>✓</Text>}
+            </View>
+          </TouchableOpacity>
+          <View style={styles.itemHeaderTextContent}>
+            <Text style={styles.itemTextBold}>Data: {item.data}</Text>
+            <Text style={styles.itemText}>Tiekėjas: {item.tiekejas}</Text>
+            <Text style={styles.itemText}>Suma: {item.suma.toFixed(2)} EUR</Text>
+          </View>
+        </View>
+
+        {expandedItemId === item.id && (
+          <View style={styles.expandedDetails}>
+            <Text style={styles.itemText}>Sąskaitos Nr.: {item.saskaitosNr}</Text>
+            <Text style={styles.itemText}>Paskirtis: {item.mokejimoPaskirtis}</Text>
+            <Text style={styles.itemText}>Rūšis: {item.rusis}</Text>
+            <Text style={styles.itemText}>Būsena: {item.busena}</Text>
+            <Text style={styles.itemText}>Apmokėta suma: ${(item.paidSuma || 0).toFixed(2)} EUR</Text> {/* Display paidSuma */}
+            <Text style={styles.itemUserId}>ID: {item.id} | Sukurta: {new Date(item.createdAt).toLocaleString('lt-LT')}</Text>
+
+            <TouchableOpacity style={styles.editButton} onPress={() => handleEditInvoice(item)}>
+              <Text style={styles.buttonText}>Redaguoti Sąskaitą</Text>
+            </TouchableOpacity>
+
+            {/* Mygtukai "Pažymėti apmokėta" ir "Pažymėti neapmokėta" pašalinti, nes būsena nustatoma automatiškai. */}
+            {/* Mygtukas "Pažymėti dalinai apmokėta" taip pat pašalintas. */}
+
+            <View style={styles.commentSection}>
+              <Text style={styles.inputLabel}>Komentarai:</Text>
+              <TextInput
+                style={styles.commentInput}
+                value={currentCommentText}
+                onChangeText={setCurrentCommentText}
+                placeholder="Įveskite komentarą..."
+                multiline={true}
+                numberOfLines={3}
+                onTouchStart={(e) => e.stopPropagation()}
+              />
+              <TouchableOpacity
+                style={styles.saveCommentButton}
+                onPress={() => handleSaveCommentForInvoice(item.id)}
+              >
+                <Text style={styles.buttonText}>Išsaugoti komentarą</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
+  const RenderFlatListHeader = () => (
+    <View style={styles.summaryContainer}>
+      <Text style={styles.summaryText}>Neapmokėta: {totalCounts.unpaidCount} sąsk. / {totalCounts.unpaidSum.toFixed(2)} EUR</Text>
+      <Text style={styles.summaryText}>Dalinai apmokėta: {totalCounts.partiallyPaidCount} sąsk. / {totalCounts.partiallyPaidSum.toFixed(2)} EUR</Text>
+    </View>
+  );
+
+  const RenderFlatListFooter = () => (
+    <View style={styles.listFooter}>
+      <TouchableOpacity style={[styles.button, styles.emailExportButton]} onPress={handleEmailExport}>
+        <Text style={styles.buttonText}>Siųsti el. paštu</Text>
+      </TouchableOpacity>
+      {selectedInvoiceIds.length > 0 && (
+        <TouchableOpacity style={[styles.button, styles.markPaidButton]} onPress={handleMarkSelectedAsPaid}>
+          <Text style={styles.buttonText}>Pažymėti pasirinktas apmokėtas</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+
+  return (
+    <View style={styles.screenContent}>
+      <Text style={styles.listTitle}>Neapmokėtos Sąskaitos</Text>
+
+      {unpaidSaskaitos.length === 0 ? (
+        <Text style={styles.noDataText}>Nėra neapmokėtų sąskaitų.</Text>
+      ) : (
+        <FlatList
+          data={unpaidSaskaitos}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id.toString()}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={RenderFlatListHeader}
+          ListFooterComponent={RenderFlatListFooter}
+        />
+      )}
+      {editingInvoice && ( // Redagavimo modalas "Neapmokėtų sąskaitų" ekrane
+        <EditInvoiceModal
+          visible={!!editingInvoice}
+          onClose={() => setEditingInvoice(null)}
+          invoice={editingInvoice}
+          onSave={handleSaveEditedInvoice}
+          uniqueSuppliers={uniqueSuppliers}
+          uniquePaymentPurposes={uniquePaymentPurposes}
+        />
+      )}
+    </View>
+  );
+}
+
+// --- Pagrindinis programėlės komponentas ---
+export default function App() {
+  const [saskaitos, setSaskaitos] = useState(() => generateRandomInvoices(50));
+  const [currentScreen, setCurrentScreen] = useState('input');
+
+  const handleAddSaskaita = (newSaskaitaData) => {
+    const newSaskaita = {
+      ...newSaskaitaData,
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+    };
+
+    setSaskaitos(prevSaskaitos => {
+      const updatedList = [newSaskaita, ...prevSaskaitos];
+      return updatedList.sort((a, b) => new Date(b.data) - new Date(a.data));
+    });
+
+    Alert.alert('Sėkmė', 'Sąskaita sėkmingai pridėta!');
+    setCurrentScreen('view');
+  };
+
+  const handleUpdateInvoice = (itemId, updates) => {
+    setSaskaitos(prevSaskaitos =>
+      prevSaskaitos.map(saskaita => {
+        if (saskaita.id === itemId) {
+          const updatedSaskaita = { ...saskaita, ...updates };
+          return updatedSaskaita;
+        }
+        return saskaita;
+      })
+    );
+  };
+
+  const calculateTotals = () => {
+    let paidCount = 0;
+    let paidSum = 0;
+    let unpaidCount = 0;
+    let unpaidSum = 0;
+    let partiallyPaidCount = 0;
+    let partiallyPaidSum = 0;
+    let totalCount = saskaitos.length;
+    let totalSum = 0;
+    const uniqueSuppliers = new Set();
+    let currentMonthCount = 0;
+    let currentMonthSum = 0;
+    let lastMonthCount = 0;
+    let lastMonthSum = 0;
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+
+    saskaitos.forEach(saskaita => {
+      totalSum += saskaita.suma;
+      uniqueSuppliers.add(saskaita.tiekejas);
+
+      const invoiceDate = new Date(saskaita.data);
+      const invoiceYear = invoiceDate.getFullYear();
+      const invoiceMonth = invoiceDate.getMonth();
+
+      if (invoiceYear === currentYear && invoiceMonth === currentMonth) {
+        currentMonthCount++;
+        currentMonthSum += saskaita.suma;
+      }
+
+      if (invoiceYear === lastMonthYear && invoiceMonth === lastMonth) {
+        lastMonthCount++;
+        lastMonthSum += saskaita.suma;
+      }
+      
+      if (saskaita.busena === 'Apmokėta' || saskaita.busena === 'Nuosavos lėšos') {
+        paidCount++;
+        paidSum += saskaita.suma;
+      } else if (saskaita.busena === 'Neapmokėta') {
+        unpaidCount++;
+        unpaidSum += saskaita.suma;
+      } else if (saskaita.busena === 'Dalinai apmokėta') {
+        partiallyPaidCount++;
+        partiallyPaidSum += saskaita.suma;
+      }
+    });
+
+    return {
+      paidCount,
+      paidSum,
+      unpaidCount,
+      unpaidSum,
+      partiallyPaidCount,
+      partiallyPaidSum,
+      totalCount,
+      totalSum,
+      uniqueSuppliers: uniqueSuppliers.size,
+      currentMonthCount,
+      currentMonthSum,
+      lastMonthCount,
+      lastMonthSum,
+    };
+  };
+
+  const totals = calculateTotals();
+
+  const uniqueSuppliers = [...new Set(saskaitos.map(s => s.tiekejas))];
+  const uniquePaymentPurposes = [...new Set(saskaitos.map(s => s.mokejimoPaskirtis))];
+
+  const TOP_NAV_HEIGHT = Platform.select({
+    ios: 70,
+    android: 80,
+  });
+
+  return (
+    <View style={styles.appContainer}>
+      <View style={[styles.topNavigation, { height: TOP_NAV_HEIGHT }]}>
+        <TouchableOpacity
+          style={[styles.navButton, currentScreen === 'input' && styles.navButtonActive]}
+          onPress={() => setCurrentScreen('input')}
+        >
+          <Text style={styles.navButtonText}>Pradžia</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.navButton, currentScreen === 'view' && styles.navButtonActive]}
+          onPress={() => setCurrentScreen('view')}
+        >
+          <Text style={styles.navButtonText}>Sąskaitos</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.navButton, currentScreen === 'unpaid' && styles.navButtonActive]}
+          onPress={() => setCurrentScreen('unpaid')}
+        >
+          <Text style={styles.navButtonText}>Neapmokėtos</Text>
+        </TouchableOpacity>
+      </View>
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[styles.keyboardAvoidingContainer, { paddingTop: TOP_NAV_HEIGHT }]}
+        keyboardVerticalOffset={0}
+      >
+        {currentScreen === 'input' && <StartScreen onAddSaskaita={handleAddSaskaita} totalCounts={totals} uniqueSuppliers={uniqueSuppliers} uniquePaymentPurposes={uniquePaymentPurposes} />}
+        {currentScreen === 'view' && <ViewInvoicesScreen saskaitos={saskaitos} onSaveComment={handleUpdateInvoice} totalCounts={totals} onUpdateInvoice={handleUpdateInvoice} uniqueSuppliers={uniqueSuppliers} uniquePaymentPurposes={uniquePaymentPurposes} />}
+        {currentScreen === 'unpaid' && <UnpaidInvoicesScreen saskaitos={saskaitos} onSaveComment={handleUpdateInvoice} totalCounts={totals} onUpdateInvoice={handleUpdateInvoice} uniqueSuppliers={uniqueSuppliers} uniquePaymentPurposes={uniquePaymentPurposes} />}
+      </KeyboardAvoidingView>
+
+      <View style={styles.bottomBlackBar} />
+    </View>
+  );
+}
+
+// --- Stiliai ---
+const styles = StyleSheet.create({
+  appContainer: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    paddingTop: 0,
+  },
+  // mainTitle: { // Pašalinta - nenaudojama
+  //   fontSize: 28,
+  //   fontWeight: 'bold',
+  //   paddingTop: 80,
+  //   marginBottom: 20,
+  //   textAlign: 'center',
+  //   color: '#0056b3',
+  // },
+  screenContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  keyboardAvoidingContainer: {
+    flex: 1,
+  },
+  inputSection: {
+    padding: 15,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    marginBottom: 20,
+    marginTop: 20,
+  },
+  inputTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+    color: '#0056b3',
+  },
+  inputLabel: {
+    fontSize: 16,
+    marginBottom: 5,
+    color: '#333',
+    fontWeight: '600',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ced4da',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 15,
+    fontSize: 16,
+    backgroundColor: '#fff',
+    color: '#333',
+  },
+  // pickerContainer: { // Pašalinta - nenaudojama šiame kontekste
+  //   borderWidth: 1,
+  //   borderColor: '#ced4da',
+  //   borderRadius: 8,
+  //   marginBottom: 15,
+  //   backgroundColor: '#fff',
+  //   overflow: 'hidden',
+  // },
+  // pickerTouchable: { // Pašalinta - nenaudojama
+  //   padding: 12,
+  // },
+  // pickerText: { // Pašalinta - nenaudojama
+  //   fontSize: 16,
+  //   color: '#333',
+  // },
+  modalBackground: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    flexGrow: 1,
+    paddingVertical: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  // modalTitle: { // Pašalinta - nenaudojama
+  //   fontSize: 22,
+  //   fontWeight: 'bold',
+  //   marginBottom: 15,
+  //   textAlign: 'center',
+  //   color: '#0056b3',
+  // },
+  // modalItem: { // Pašalinta - nenaudojama
+  //   padding: 15,
+  //   borderBottomWidth: 1,
+  //   borderBottomColor: '#eee',
+  // },
+  // modalItemText: { // Pašalinta - nenaudojama
+  //   fontSize: 18,
+  //   color: '#333',
+  // },
+  // modalCloseButton: { // Pašalinta - nenaudojama
+  //   backgroundColor: '#007bff',
+  //   padding: 15,
+  //   borderRadius: 10,
+  //   alignItems: 'center',
+  //   marginTop: 20,
+  // },
+  // modalCloseButtonText: { // Pašalinta - nenaudojama
+  //   color: '#fff',
+  //   fontSize: 18,
+  //   fontWeight: 'bold',
+  // },
+  button: {
+    backgroundColor: '#007bff',
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  cancelButton: {
+    backgroundColor: '#6c757d',
+    marginTop: 10,
+  },
+  // exportButton: { // Pašalinta - nenaudojama
+  //   backgroundColor: '#28a745',
+  //   marginTop: 15,
+  //   marginBottom: 10,
+  // },
+  emailExportButton: {
+    backgroundColor: '#17a2b8',
+    marginTop: 15,
+    marginBottom: 10,
+  },
+  markPaidButton: {
+    backgroundColor: '#28a745',
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  // markUnpaidButton: { // Pašalinta - nenaudojama
+  //   backgroundColor: '#dc3545', // Red for unpaid
+  //   marginTop: 5,
+  // },
+  // markPartiallyPaidButton: { // Pašalinta - nenaudojama
+  //   backgroundColor: '#ffc107', // Orange for partially paid, matching yellow background
+  //   marginTop: 5,
+  // },
+  listTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+    color: '#0056b3',
+  },
+  saskaitaItem: {
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#b3d9ff',
+  },
+  saskaitaItemContent: {
+    flex: 1,
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  itemHeaderTextContent: {
+    flex: 1,
+  },
+  checkboxContainer: {
+    width: 30,
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: '#0056b3',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: '#0056b3',
+  },
+  checkboxTick: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  selectedItemBorder: {
+    borderColor: '#007bff',
+    borderWidth: 2,
+  },
+  expandedDetails: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#ccc',
+  },
+  commentSection: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  commentInput: {
+    borderWidth: 1,
+    borderColor: '#ced4da',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 5,
+    marginBottom: 10,
+    minHeight: 60,
+    textAlignVertical: 'top',
+    backgroundColor: '#fff',
+  },
+  saveCommentButton: {
+    backgroundColor: '#6c757d',
+    padding: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  editButton: {
+    backgroundColor: '#ffc107',
+    padding: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  itemText: {
+    fontSize: 15,
+    color: '#333',
+    marginBottom: 3,
+  },
+  itemTextBold: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#0056b3',
+    marginBottom: 5,
+  },
+  itemUserId: {
+    fontSize: 10,
+    color: '#6c757d',
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
+  noDataText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#6c757d',
+    padding: 20,
+  },
+  filterInput: {
+    borderWidth: 1,
+    borderColor: '#ced4da',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 15,
+    fontSize: 16,
+    backgroundColor: '#fff',
+    color: '#333',
+  },
+  summaryContainer: {
+    backgroundColor: '#f0f8ff',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#b3d9ff',
+  },
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+    color: '#0056b3',
+  },
+  summaryText: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 3,
+  },
+  summaryTextBold: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#0056b3',
+    marginTop: 5,
+  },
+  topNavigation: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    backgroundColor: '#0056b3',
+    paddingVertical: 15,
+    paddingTop: Platform.OS === 'android' ? 25 : 15,
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 10,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  navButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+    backgroundColor: 'transparent',
+  },
+  navButtonActive: {
+    backgroundColor: '#007bff',
+  },
+  navButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  scrollContentContainer: {
+    flexGrow: 1,
+    paddingBottom: 60,
+  },
+  bottomBlackBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: Platform.OS === 'android' ? 60 : 0,
+    backgroundColor: 'black',
+    zIndex: 1,
+  },
+  listFooter: {
+    paddingTop: 10,
+    marginBottom: Platform.OS === 'android' ? 60 : 0,
+  },
+  suggestionsContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ced4da',
+    maxHeight: 150,
+    marginBottom: 15,
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  suggestionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+});
