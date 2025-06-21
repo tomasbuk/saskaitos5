@@ -1,62 +1,79 @@
 // FILE: src/screens/settings/DangerZoneScreen.js
+
 import React, { useContext } from 'react';
-import { View, Text, TouchableOpacity, Alert, Switch, StyleSheet } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SettingsContext } from '../../contexts/SettingsContext';
-import { styles as globalStyles, colors, spacing, typography } from '../../utils/styles';
+import { ScrollView, View, Text, Alert } from 'react-native';
+import SettingsItem from '../../components/SettingsItem';
+import { InvoicesContext } from '../../contexts/InvoicesContext';
+import { CashContext } from '../../contexts/CashContext';
+import { styles as globalStyles, spacing } from '../../utils/styles';
 
 export default function DangerZoneScreen() {
-    const settings = useContext(SettingsContext);
+    const { saskaitos, draftSaskaitos, clearAllInvoices } = useContext(InvoicesContext);
+    const { transactions, clearCashData } = useContext(CashContext);
 
-    const handleClearData = () => {
+    const handleClearInvoices = () => {
         Alert.alert(
-            "Dėmesio! Visi duomenys bus ištrinti!",
-            "Ar tikrai norite ištrinti visas sąskaitas, operacijas ir nustatymus? Šio veiksmo negalėsite atšaukti.",
+            "Ištrinti visas sąskaitas?",
+            "Šis veiksmas negrįžtamas. Visos gautos ir išrašytos sąskaitos bus pašalintos visam laikui. Ar tikrai norite tęsti?",
             [
-                { text: 'Atšaukti', style: 'cancel' },
-                { text: 'Ištrinti viską', style: 'destructive', onPress: async () => { 
-                    try {
-                        await AsyncStorage.clear();
-                        Alert.alert('Sėkmė', 'Visi duomenys ištrinti. Perkraukite programėlę.');
-                    } catch (e) {
-                        Alert.alert('Klaida', 'Nepavyko išvalyti duomenų.');
-                    }
-                }}
+                { text: "Atšaukti", style: "cancel" },
+                { text: "Ištrinti", style: "destructive", onPress: clearAllInvoices }
             ]
         );
     };
 
-    return (
-        <View style={globalStyles.screenContent}>
-            <View style={globalStyles.inputSection}>
-                <Text style={styles.sectionTitle}>Operacijų Valdymas</Text>
-                <View style={styles.switchContainer}>
-                    <Text style={styles.switchLabel}>Trinant operaciją, kurti atvirkštinį įrašą?</Text>
-                    <Switch trackColor={{ false: "#767577", true: colors.accent }} thumbColor={settings.useReversalTransactions ? colors.surface : "#f4f3f4"} onValueChange={settings.setUseReversalTransactions} value={settings.useReversalTransactions} />
-                </View>
-                <Text style={styles.switchDescription}>(Rekomenduojama. Išjungus, operacijos bus trinamos negrįžtamai.)</Text>
-                
-                <View style={styles.switchContainer}>
-                    <Text style={styles.switchLabel}>Leisti trinti atšauktų operacijų įrašus?</Text>
-                    <Switch trackColor={{ false: "#767577", true: colors.warning }} thumbColor={settings.allowDeletingReversals ? colors.surface : "#f4f3f4"} onValueChange={settings.setAllowDeletingReversals} value={settings.allowDeletingReversals} />
-                </View>
-                <Text style={styles.switchDescription}>(Skirta tik "išvalyti" istoriją. Gali pažeisti atskaitomybę.)</Text>
-            </View>
+    const handleClearCashData = () => {
+        Alert.alert(
+            "Ištrinti visus kasos duomenis?",
+            "Šis veiksmas negrįžtamas. Visos kasos, seifo ir banko operacijos bus pašalintos, o likučiai atstatyti į pradinius. Ar tikrai norite tęsti?",
+            [
+                { text: "Atšaukti", style: "cancel" },
+                { text: "Ištrinti", style: "destructive", onPress: clearCashData }
+            ]
+        );
+    };
 
-            <View style={globalStyles.inputSection}>
-                <Text style={styles.sectionTitle}>Visiškas Išvalymas</Text>
-                <TouchableOpacity style={[globalStyles.button, {backgroundColor: colors.danger}]} onPress={handleClearData}>
-                    <Text style={globalStyles.buttonText}>Išvalyti visus programėlės duomenis</Text>
-                </TouchableOpacity>
-                <Text style={{color: colors.textSecondary, textAlign: 'center', marginTop: 8}}>Atsargiai! Šis veiksmas yra negrįžtamas ir ištrins absoliučiai visą programėlės atmintį.</Text>
+    const showDebugData = () => {
+        const sampleInvoices = saskaitos.slice(0, 2);
+        const sampleDrafts = draftSaskaitos.slice(0, 2);
+        const sampleTransactions = transactions.slice(0, 2);
+
+        const debugString = 
+            "--- KASOS OPERACIJOS (pavyzdys) ---\n" +
+            JSON.stringify(sampleTransactions, null, 2) +
+            "\n\n--- GAUTOS SĄSKAITOS (pavyzdys) ---\n" +
+            JSON.stringify(sampleInvoices, null, 2) +
+            "\n\n--- IŠRAŠYTOS SĄSKAITOS (pavyzdys) ---\n" +
+            JSON.stringify(sampleDrafts, null, 2);
+
+        Alert.alert("Diagnostiniai Duomenys", debugString, [{ text: "Gerai" }]);
+    };
+
+    return (
+        <ScrollView style={globalStyles.screenContent}>
+            <View style={{ padding: spacing.medium }}>
+                <Text style={globalStyles.listTitle}>Pavojinga Zona</Text>
+                
+                <SettingsItem
+                    title="Rodyti duomenis diagnostikai"
+                    icon="🐛"
+                    onPress={showDebugData}
+                />
+                
+                <SettingsItem
+                    title="Išvalyti visas sąskaitas"
+                    icon="🗑️"
+                    onPress={handleClearInvoices}
+                    isDanger={true}
+                />
+                
+                <SettingsItem
+                    title="Išvalyti visus kasos duomenis"
+                    icon="🔥"
+                    onPress={handleClearCashData}
+                    isDanger={true}
+                />
             </View>
-        </View>
+        </ScrollView>
     );
 }
-
-const styles = StyleSheet.create({
-    sectionTitle: { ...globalStyles.inputTitle, textAlign: 'left', fontSize: 18, marginBottom: 16 },
-    switchContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.small,},
-    switchLabel: { ...globalStyles.inputLabel, flex: 1, marginRight: spacing.medium, marginBottom: 0,},
-    switchDescription: { ...typography.caption, color: colors.textSecondary, fontStyle: 'italic', marginTop: spacing.small, paddingBottom: spacing.medium, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: spacing.medium },
-});

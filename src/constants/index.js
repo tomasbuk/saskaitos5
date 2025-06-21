@@ -19,6 +19,12 @@ export const STORAGE_KEY_CASH_SNAPSHOTS = STORAGE_KEY_PREFIX + 'cash_snapshots_d
 export const STORAGE_KEY_USE_REVERSAL_TRANSACTIONS = STORAGE_KEY_PREFIX + 'use_reversal_transactions';
 export const STORAGE_KEY_ALLOW_DELETING_REVERSALS = STORAGE_KEY_PREFIX + 'allow_deleting_reversals';
 
+// PATAISYMAS: Pridedami trūkstami raktai pradiniams likučiams
+export const STORAGE_KEY_INITIAL_CASH_BALANCE = STORAGE_KEY_PREFIX + 'initial_cash_balance';
+export const STORAGE_KEY_INITIAL_SAFE_BALANCE = STORAGE_KEY_PREFIX + 'initial_safe_balance';
+export const STORAGE_KEY_INITIAL_BANK_BALANCE = STORAGE_KEY_PREFIX + 'initial_bank_balance';
+
+
 export const initialRusysOptions = ['Pardavimai', 'Išlaidos', 'Miksas'];
 export const initialBusenaOptions = ['Neapmokėta', 'Apmokėta', 'Nuosavos lėšos', 'Dalinai apmokėta'];
 export const initialTiekejaiOptions = ['Rugiagėlė', 'Mantinga', 'Sanitex', 'Kučmarskienės', 'Žemaitijos pienas'];

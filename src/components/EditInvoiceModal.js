@@ -46,11 +46,25 @@ export default function EditInvoiceModal({
             setComment(invoice.comment || '');
             setApmoketiIki(invoice.apmoketiIki || '');
         }
-    // PATAISYMAS: Į priklausomybių masyvą įtraukta trūkstama `isDraft` reikšmė.
     }, [invoice, isDraft]);
+
+    // NAUJA LOGIKA: Automatiškai nustatome apmokėtą sumą priklausomai nuo būsenos
+    useEffect(() => {
+        // Jei vartotojas pakeičia būseną į "Apmokėta", automatiškai užpildome pilną sumą.
+        if (busena === 'Apmokėta') {
+            setPaidSuma(suma);
+        } 
+        // Jei pakeičia į "Neapmokėta", nustatome apmokėtą sumą į 0.
+        else if (busena === 'Neapmokėta') {
+            setPaidSuma('0');
+        }
+        // Jei "Dalinai apmokėta", nieko nedarome ir leidžiame vartotojui įvesti sumą pačiam.
+    }, [busena, suma]);
+
 
     const handleSave = () => {
         const parsedSuma = parseFloat(String(suma).replace(',', '.'));
+        // Paimame paidSuma iš state, kuris jau buvo automatiškai nustatytas arba įvestas ranka
         const parsedPaidSuma = parseFloat(String(paidSuma).replace(',', '.'));
 
         if (!data || !saskaitosNr || !entityName || !mokejimoPaskirtis || !suma || !apmoketiIki) {
@@ -67,7 +81,9 @@ export default function EditInvoiceModal({
             data, saskaitosNr, mokejimoPaskirtis,
             suma: parsedSuma,
             paidSuma: parsedPaidSuma,
-            busena, comment, apmoketiIki,
+            busena: busena, // Naudojame būseną, kurią pasirinko vartotojas
+            comment,
+            apmoketiIki: apmoketiIki, // PATAISYMAS: Įtraukiame `apmoketiIki` į išsaugomus duomenis.
         };
 
         if (isDraft) {
@@ -84,9 +100,23 @@ export default function EditInvoiceModal({
     return (
         <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
             <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-                <ScrollView contentContainerStyle={{ padding: spacing.medium }}>
+                <ScrollView contentContainerStyle={{ padding: spacing.medium }} keyboardShouldPersistTaps="handled">
                     <View style={globalStyles.inputSection}>
                         <Text style={globalStyles.listTitle}>Redaguoti Įrašą</Text>
+                        
+                        {/* Būsenos pasirinkimas dabar yra viršuje, nes nuo jo priklauso kiti laukai */}
+                        <CustomDropdown label="Būsena" options={busenaOptions} selectedValue={busena} onSelect={setBusena} />
+                        
+                        <Text style={globalStyles.inputLabel}>Suma (EUR):</Text>
+                        <TextInput style={globalStyles.input} value={suma} onChangeText={setSuma} keyboardType="decimal-pad" />
+
+                        {/* NAUJA LOGIKA: Rodome šį laukelį tik jei būsena yra "Dalinai apmokėta" */}
+                        {busena === 'Dalinai apmokėta' && (
+                            <>
+                                <Text style={globalStyles.inputLabel}>Apmokėta suma (EUR):</Text>
+                                <TextInput style={globalStyles.input} value={paidSuma} onChangeText={setPaidSuma} keyboardType="decimal-pad" />
+                            </>
+                        )}
                         
                         <Text style={globalStyles.inputLabel}>Data:</Text>
                         <TouchableOpacity style={globalStyles.input} onPress={() => setShowDatePicker(true)}><Text>{data}</Text></TouchableOpacity>
@@ -101,19 +131,11 @@ export default function EditInvoiceModal({
                         <Text style={globalStyles.inputLabel}>Sąskaitos Nr.:</Text>
                         <TextInput style={globalStyles.input} value={saskaitosNr} onChangeText={setSaskaitosNr} />
                         
-                        <Text style={globalStyles.inputLabel}>Suma (EUR):</Text>
-                        <TextInput style={globalStyles.input} value={suma} onChangeText={setSuma} keyboardType="decimal-pad" />
-
-                        <Text style={globalStyles.inputLabel}>Apmokėta suma (EUR):</Text>
-                        <TextInput style={globalStyles.input} value={paidSuma} onChangeText={setPaidSuma} keyboardType="decimal-pad" />
-
                         <CustomDropdown label="Mokėjimo paskirtis" options={mokejimoPaskirtisOptions} selectedValue={mokejimoPaskirtis} onSelect={setMokejimoPaskirtis} />
                         
                         {!isDraft && (
                             <CustomDropdown label="Rūšis" options={rusysOptions} selectedValue={rusis} onSelect={setRusis} />
                         )}
-                        
-                        <CustomDropdown label="Būsena" options={busenaOptions} selectedValue={busena} onSelect={setBusena} />
 
                         <Text style={globalStyles.inputLabel}>Apmokėti iki:</Text>
                         <TouchableOpacity style={globalStyles.input} onPress={() => setShowApmoketiIkiDatePicker(true)}><Text>{apmoketiIki}</Text></TouchableOpacity>

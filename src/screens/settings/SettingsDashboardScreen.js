@@ -1,14 +1,14 @@
 // FILE: src/screens/settings/SettingsDashboardScreen.js
-
 import React from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Text } from 'react-native';
 import SettingsItem from '../../components/SettingsItem';
-import { styles as globalStyles } from '../../utils/styles';
+import { styles as globalStyles, spacing } from '../../utils/styles';
 
 export default function SettingsDashboardScreen({ navigation }) {
     return (
         <ScrollView style={globalStyles.screenContent}>
-            <View style={{ padding: 10 }}>
+            <View style={{ padding: spacing.medium }}>
+                <Text style={globalStyles.listTitle}>Nustatymai</Text>
                 <SettingsItem
                     title="Likučių Valdymas"
                     icon="💰"
@@ -21,23 +21,28 @@ export default function SettingsDashboardScreen({ navigation }) {
                 />
                 <SettingsItem
                     title="Sąskaitų Klasifikatoriai"
-                    icon="📚"
+                    icon="🏷️"
                     onPress={() => navigation.navigate('ClassifierLists')}
                 />
-                {/* PATAISYMAS: Pridedame naują meniu punktą */}
+                {/* Šis mygtukas buvo dingęs */}
                 <SettingsItem
-                    title="Duomenų Importavimas"
+                    title="Sąskaitų Importavimas"
                     icon="📥"
                     onPress={() => navigation.navigate('Import')}
                 />
                 <SettingsItem
-                    title="Bendri Nustatymai"
-                    icon="🔧"
+                    title="Kasos Duomenų Importavimas"
+                    icon="🗄️"
+                    onPress={() => navigation.navigate('ZReportImport')}
+                />
+                <SettingsItem
+                    title="Operacijų Valdymas"
+                    icon="⚙️"
                     onPress={() => navigation.navigate('GeneralSettings')}
                 />
                 <SettingsItem
                     title="Pavojinga Zona"
-                    icon="☣️"
+                    icon="⚠️"
                     onPress={() => navigation.navigate('DangerZone')}
                     isDanger={true}
                 />

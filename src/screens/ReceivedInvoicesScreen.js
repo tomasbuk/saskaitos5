@@ -1,8 +1,10 @@
 // FILE: src/screens/ReceivedInvoicesScreen.js
+
 import React, { useState, useContext, useMemo } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { InvoicesContext } from '../contexts/InvoicesContext';
 import { SettingsContext } from '../contexts/SettingsContext';
+import { CashContext } from '../contexts/CashContext'; // Prijungiame kasos kontekstą
 import EditInvoiceModal from '../components/EditInvoiceModal';
 import FilterPanel from '../components/FilterPanel';
 import AnimatedWarningIcon from '../components/AnimatedWarningIcon';
@@ -81,8 +83,12 @@ const InvoiceItem = ({ item, isExpanded, onExpand, onEdit, onDelete }) => {
                     <Text style={styles.detailText}><Text style={styles.detailLabel}>Apmokėti iki:</Text> {item.apmoketiIki}</Text>
                     {item.comment ? <Text style={styles.detailText}><Text style={styles.detailLabel}>Komentaras:</Text> {item.comment}</Text> : null}
                     <View style={styles.buttonRow}>
-                        <TouchableOpacity style={[globalStyles.button, styles.actionBtn, {backgroundColor: colors.danger}]} onPress={onDelete}><Text style={globalStyles.buttonText}>Ištrinti</Text></TouchableOpacity>
-                        <TouchableOpacity style={[globalStyles.button, styles.actionBtn, {backgroundColor: colors.primary}]} onPress={onEdit}><Text style={globalStyles.buttonText}>Redaguoti</Text></TouchableOpacity>
+                        <TouchableOpacity style={[globalStyles.button, styles.actionBtn, {backgroundColor: colors.danger}]} onPress={onDelete}>
+                            <Text style={globalStyles.buttonText}>Ištrinti</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[globalStyles.button, styles.actionBtn, {backgroundColor: colors.primary}]} onPress={onEdit}>
+                            <Text style={globalStyles.buttonText}>Redaguoti</Text>
+                        </TouchableOpacity>
                     </View>
                 </View>
             )}
@@ -90,14 +96,19 @@ const InvoiceItem = ({ item, isExpanded, onExpand, onEdit, onDelete }) => {
     );
 };
 
+
 export default function ReceivedInvoicesScreen({ navigation }) {
     const { saskaitos, handleUpdateInvoice, handleDeleteInvoice } = useContext(InvoicesContext);
+    const { addTransaction, cashRegisterBalance, setCashRegisterBalance, safeBalance, bankBalance, setBankBalance } = useContext(CashContext);
     const settings = useContext(SettingsContext);
+    
     const [expandedItemId, setExpandedItemId] = useState(null);
     const [editingInvoice, setEditingInvoice] = useState(null);
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({ status: null, entity: null, startDate: null, endDate: null });
+
     const toggleExpand = (itemId) => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedItemId(expandedItemId === itemId ? null : itemId); };
+    
     const filteredSaskaitos = useMemo(() => {
         return saskaitos.filter(invoice => {
             if (!invoice || typeof invoice.busena === 'undefined' || typeof invoice.tiekejas === 'undefined') return false;
@@ -108,7 +119,34 @@ export default function ReceivedInvoicesScreen({ navigation }) {
             return statusMatch && entityMatch && dateMatch;
         });
     }, [saskaitos, filters]);
+
     const statusFilterOptions = settings.busenaOptions.filter(b => b !== 'Nuosavos lėšos');
+
+    const handleSaveAndCreateTransaction = (id, newData) => {
+        const oldInvoice = saskaitos.find(s => s.id === id);
+        
+        // Atnaujiname sąskaitą InvoicesContext'e
+        handleUpdateInvoice(id, newData);
+
+        // Tikriname, ar sąskaita buvo naujai apmokėta (pilnai arba dalinai)
+        const paymentAmount = newData.paidSuma - (oldInvoice?.paidSuma || 0);
+        if (paymentAmount > 0) {
+            // Laikome, kad sąskaitos apmokamos iš banko. Tai galima ateityje padaryti lankstesniu.
+            const newBankBalance = bankBalance - paymentAmount;
+            setBankBalance(newBankBalance);
+
+            addTransaction(
+                'Išlaidos (sąskaitos apmokėjimas)', 
+                paymentAmount, 
+                cashRegisterBalance, 
+                safeBalance, 
+                newBankBalance, 
+                `Apmokėta tiekėjui: ${newData.tiekejas} (Sąsk. Nr. ${newData.saskaitosNr})`
+            );
+        }
+        
+        setEditingInvoice(null);
+    };
 
     return (
         <View style={globalStyles.screenContent}>
@@ -121,7 +159,7 @@ export default function ReceivedInvoicesScreen({ navigation }) {
                 ListEmptyComponent={<Text style={globalStyles.noDataText}>Sąskaitų pagal filtrus nerasta.</Text>}
                 contentContainerStyle={{ paddingHorizontal: spacing.medium, paddingBottom: spacing.medium, paddingTop: spacing.small }}
             />
-            {editingInvoice && ( <EditInvoiceModal visible={!!editingInvoice} onClose={() => setEditingInvoice(null)} invoice={editingInvoice} onSave={(id, data) => { handleUpdateInvoice(id, data); setEditingInvoice(null); }} tiekejaiOptions={settings.tiekejaiOptions} rusysOptions={settings.rusysOptions} busenaOptions={settings.busenaOptions} mokejimoPaskirtisOptions={settings.mokejimoPaskirtisOptions} isDraft={false} /> )}
+            {editingInvoice && ( <EditInvoiceModal visible={!!editingInvoice} onClose={() => setEditingInvoice(null)} invoice={editingInvoice} onSave={handleSaveAndCreateTransaction} tiekejaiOptions={settings.tiekejaiOptions} rusysOptions={settings.rusysOptions} busenaOptions={settings.busenaOptions} mokejimoPaskirtisOptions={settings.mokejimoPaskirtisOptions} isDraft={false} /> )}
         </View>
     );
 }

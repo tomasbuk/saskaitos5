@@ -42,24 +42,15 @@ export const InvoicesProvider = ({ children }) => {
         }
     }, [draftSaskaitos, loading]);
 
-    // --- Gautų sąskaitų valdymas ---
     const handleAddSaskaita = (newSaskaitaData) => {
-        const newSaskaita = {
-            ...newSaskaitaData,
-            id: Date.now() + Math.random(),
-            createdAt: new Date().toISOString(),
-        };
+        const newSaskaita = { ...newSaskaitaData, id: Date.now() + Math.random(), createdAt: new Date().toISOString(), };
         const updatedList = [newSaskaita, ...saskaitos].sort((a, b) => new Date(b.data) - new Date(a.data));
         setSaskaitos(updatedList);
         showCustomAlert('Sėkmė', 'Sąskaita sėkmingai pridėta!');
     };
 
     const handleUpdateInvoice = (itemId, updates) => {
-        setSaskaitos(prevSaskaitos => 
-            prevSaskaitos.map(saskaita => 
-                saskaita.id === itemId ? { ...saskaita, ...updates } : saskaita
-            )
-        );
+        setSaskaitos(prev => prev.map(s => (s.id === itemId ? { ...s, ...updates } : s)));
     };
 
     const handleDeleteInvoice = (itemId) => {
@@ -69,24 +60,15 @@ export const InvoicesProvider = ({ children }) => {
         ]);
     };
 
-    // --- Išrašomų sąskaitų valdymas ---
     const handleAddDraftInvoice = (newDraftData) => {
-        const newDraft = {
-            ...newDraftData,
-            id: `DRAFT-${Date.now() + Math.random()}`,
-            createdAt: new Date().toISOString(),
-        };
+        const newDraft = { ...newDraftData, id: `DRAFT-${Date.now() + Math.random()}`, createdAt: new Date().toISOString(), };
         const updatedList = [newDraft, ...draftSaskaitos].sort((a, b) => new Date(b.data) - new Date(a.data));
         setDraftSaskaitos(updatedList);
         showCustomAlert('Sėkmė', 'Išrašoma sąskaita sėkmingai pridėta!');
     };
 
     const handleUpdateDraftInvoice = (itemId, updates) => {
-        setDraftSaskaitos(prevDrafts => 
-            prevDrafts.map(draft => 
-                draft.id === itemId ? { ...draft, ...updates } : draft
-            )
-        );
+        setDraftSaskaitos(prev => prev.map(d => (d.id === itemId ? { ...d, ...updates } : d)));
     };
 
     const handleDeleteDraftInvoice = (itemId) => {
@@ -96,35 +78,33 @@ export const InvoicesProvider = ({ children }) => {
         ]);
     };
 
-    // --- Masinio importavimo funkcija ---
     const handleBulkAddSaskaitos = (newInvoices) => {
-        if (!Array.isArray(newInvoices) || newInvoices.length === 0) {
-            return;
-        }
-        // Sujungiame senas sąskaitas su naujomis ir išvengiame dublikatų pagal saskaitosNr
+        if (!Array.isArray(newInvoices) || newInvoices.length === 0) { return; }
         const combined = [...saskaitos];
         const existingNrs = new Set(saskaitos.map(s => s.saskaitosNr));
-        newInvoices.forEach(newInv => {
-            if (!existingNrs.has(newInv.saskaitosNr)) {
-                combined.push(newInv);
-            }
-        });
-        
+        newInvoices.forEach(newInv => { if (!existingNrs.has(newInv.saskaitosNr)) { combined.push(newInv); }});
         const updatedList = combined.sort((a, b) => new Date(b.data) - new Date(a.data));
         setSaskaitos(updatedList);
     };
+    
+    // PATAISYMAS: Nauja funkcija, skirta tik gautų sąskaitų išvalymui
+    const handleClearReceivedInvoices = async () => {
+        try {
+            setSaskaitos([]);
+            await AsyncStorage.removeItem(STORAGE_KEY_INVOICES);
+            showCustomAlert('Atlikta', 'Visos gautos sąskaitos buvo ištrintos.');
+        } catch (e) {
+            console.error("Failed to clear received invoices.", e);
+            showCustomAlert('Klaida', 'Nepavyko ištrinti gautų sąskaitų.');
+        }
+    };
 
     const value = {
-        saskaitos,
-        draftSaskaitos,
-        loading,
-        handleAddSaskaita,
-        handleUpdateInvoice,
-        handleDeleteInvoice,
-        handleAddDraftInvoice,
-        handleUpdateDraftInvoice,
-        handleDeleteDraftInvoice,
-        handleBulkAddSaskaitos, // Pridedame naują funkciją
+        saskaitos, draftSaskaitos, loading,
+        handleAddSaskaita, handleUpdateInvoice, handleDeleteInvoice,
+        handleAddDraftInvoice, handleUpdateDraftInvoice, handleDeleteDraftInvoice,
+        handleBulkAddSaskaitos,
+        handleClearReceivedInvoices, // Pridedame naują funkciją
     };
 
     return <InvoicesContext.Provider value={value}>{children}</InvoicesContext.Provider>;

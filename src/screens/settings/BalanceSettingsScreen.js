@@ -1,53 +1,78 @@
 // FILE: src/screens/settings/BalanceSettingsScreen.js
-import React, { useContext } from 'react';
-import { View, Text, TextInput, ScrollView, StyleSheet } from 'react-native';
+import React, { useContext, useEffect } from 'react';
+import { View, Text, TextInput, ScrollView, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CashContext } from '../../contexts/CashContext';
 import { styles as globalStyles, spacing } from '../../utils/styles';
+import * as C from '../../constants';
 
 export default function BalanceSettingsScreen() {
     const { cashRegisterBalance, setCashRegisterBalance, safeBalance, setSafeBalance, bankBalance, setBankBalance } = useContext(CashContext);
 
-    // Ši funkcija leidžia patogiai įvesti kablelį ir matyti pakeitimus iškart
-    const handleBalanceChange = (text, setter) => {
-        const num = text.replace(/[^0-9.,]/g, '').replace(',', '.');
-        setter(num); // Laikinai nustatome kaip tekstą, kad leistų rašyti
+    const handleBalanceChange = async (text, setter, storageKey) => {
+        const numString = text.replace(/[^0-9.,]/g, '').replace(',', '.');
+        const num = parseFloat(numString);
+        
+        setter(numString); 
+
+        if (!isNaN(num)) {
+            try {
+                await AsyncStorage.setItem(storageKey, String(num));
+            } catch (e) {
+                console.error("Failed to save initial balance.", e);
+            }
+        }
     };
 
-    // Ši funkcija, baigus redaguoti, užtikrina, kad būtų išsaugotas skaičius
     const handleBalanceEndEditing = (text, setter) => {
         const num = parseFloat(String(text).replace(',', '.'));
-        setter(isNaN(num) ? 0 : num); // Jei įvesta nesąmonė, nustatom 0, kitu atveju - skaičių
+        setter(isNaN(num) ? 0 : num);
     };
     
+    // Šis efektas įkrauna pradinius likučius į dabartinę būseną TIK atidarius ekraną
+    useEffect(() => {
+        const loadInitialBalances = async () => {
+            const initialCash = await AsyncStorage.getItem(C.STORAGE_KEY_INITIAL_CASH_BALANCE) || '0';
+            const initialSafe = await AsyncStorage.getItem(C.STORAGE_KEY_INITIAL_SAFE_BALANCE) || '0';
+            const initialBank = await AsyncStorage.getItem(C.STORAGE_KEY_INITIAL_BANK_BALANCE) || '0';
+            setCashRegisterBalance(parseFloat(initialCash));
+            setSafeBalance(parseFloat(initialSafe));
+            setBankBalance(parseFloat(initialBank));
+        };
+        loadInitialBalances();
+    // PATAISYMAS: Pridėtos trūkstamos priklausomybės, kad atitiktų ESLint taisykles.
+    }, [setCashRegisterBalance, setSafeBalance, setBankBalance]);
+
     return (
         <ScrollView style={globalStyles.screenContent}>
              <View style={[globalStyles.inputSection, { margin: spacing.medium }]}>
-                <Text style={globalStyles.inputLabel}>Kasos likutis (EUR)</Text>
+                <Text style={globalStyles.inputLabel}>Pradinis kasos likutis (EUR)</Text>
                 <TextInput 
                     style={globalStyles.input} 
                     value={String(cashRegisterBalance)} 
-                    onChangeText={(text) => handleBalanceChange(text, setCashRegisterBalance)} 
-                    onEndEditing={(e) => handleBalanceEndEditing(e.nativeEvent.text, setCashRegisterBalance)} 
+                    // Pakeista į onEndEditing, kad išsaugojimas vyktų tik baigus redaguoti
+                    onEndEditing={(e) => handleBalanceChange(e.nativeEvent.text, setCashRegisterBalance, C.STORAGE_KEY_INITIAL_CASH_BALANCE)} 
+                    onChangeText={setCashRegisterBalance} // Paliekame, kad vartotojas matytų, ką rašo
                     keyboardType="decimal-pad"
                     placeholder="0.00"
                 />
                 
-                <Text style={globalStyles.inputLabel}>Seifo likutis (EUR)</Text>
+                <Text style={globalStyles.inputLabel}>Pradinis seifo likutis (EUR)</Text>
                 <TextInput 
                     style={globalStyles.input} 
                     value={String(safeBalance)} 
-                    onChangeText={(text) => handleBalanceChange(text, setSafeBalance)} 
-                    onEndEditing={(e) => handleBalanceEndEditing(e.nativeEvent.text, setSafeBalance)} 
+                    onEndEditing={(e) => handleBalanceChange(e.nativeEvent.text, setSafeBalance, C.STORAGE_KEY_INITIAL_SAFE_BALANCE)}
+                    onChangeText={setSafeBalance} 
                     keyboardType="decimal-pad"
                     placeholder="0.00"
                 />
                 
-                <Text style={globalStyles.inputLabel}>Banko likutis (EUR)</Text>
+                <Text style={globalStyles.inputLabel}>Pradinis banko likutis (EUR)</Text>
                 <TextInput 
                     style={globalStyles.input} 
                     value={String(bankBalance)} 
-                    onChangeText={(text) => handleBalanceChange(text, setBankBalance)} 
-                    onEndEditing={(e) => handleBalanceEndEditing(e.nativeEvent.text, setBankBalance)} 
+                    onEndEditing={(e) => handleBalanceChange(e.nativeEvent.text, setBankBalance, C.STORAGE_KEY_INITIAL_BANK_BALANCE)}
+                    onChangeText={setBankBalance} 
                     keyboardType="decimal-pad"
                     placeholder="0.00"
                 />
