@@ -3,50 +3,26 @@
 import React, { useContext } from 'react';
 import { ScrollView, View, Text, Alert } from 'react-native';
 import SettingsItem from '../../components/SettingsItem';
-import { InvoicesContext } from '../../contexts/InvoicesContext';
-import { CashContext } from '../../contexts/CashContext';
+import { SettingsContext } from '../../contexts/SettingsContext';
 import { styles as globalStyles, spacing } from '../../utils/styles';
 
 export default function DangerZoneScreen() {
-    const { saskaitos, draftSaskaitos, clearAllInvoices } = useContext(InvoicesContext);
-    const { transactions, clearCashData } = useContext(CashContext);
+    const settings = useContext(SettingsContext);
 
-    const handleClearInvoices = () => {
-        Alert.alert(
-            "Ištrinti visas sąskaitas?",
-            "Šis veiksmas negrįžtamas. Visos gautos ir išrašytos sąskaitos bus pašalintos visam laikui. Ar tikrai norite tęsti?",
+    const handleClearAllData = () => {
+        Alert.alert( "Dėmesio! Visi duomenys bus ištrinti!", "Ar tikrai norite ištrinti visas sąskaitas, operacijas ir nustatymus? Šio veiksmo negalėsite atšaukti.",
             [
-                { text: "Atšaukti", style: "cancel" },
-                { text: "Ištrinti", style: "destructive", onPress: clearAllInvoices }
+                { text: 'Atšaukti', style: 'cancel' },
+                { text: 'Ištrinti viską', style: 'destructive', onPress: async () => { 
+                    try {
+                        await AsyncStorage.clear();
+                        Alert.alert('Sėkmė', 'Visi duomenys ištrinti. Perkraukite programėlę, kad pamatytumėte pakeitimus.');
+                    } catch (e) {
+                        Alert.alert('Klaida', 'Nepavyko išvalyti duomenų.');
+                    }
+                }}
             ]
         );
-    };
-
-    const handleClearCashData = () => {
-        Alert.alert(
-            "Ištrinti visus kasos duomenis?",
-            "Šis veiksmas negrįžtamas. Visos kasos, seifo ir banko operacijos bus pašalintos, o likučiai atstatyti į pradinius. Ar tikrai norite tęsti?",
-            [
-                { text: "Atšaukti", style: "cancel" },
-                { text: "Ištrinti", style: "destructive", onPress: clearCashData }
-            ]
-        );
-    };
-
-    const showDebugData = () => {
-        const sampleInvoices = saskaitos.slice(0, 2);
-        const sampleDrafts = draftSaskaitos.slice(0, 2);
-        const sampleTransactions = transactions.slice(0, 2);
-
-        const debugString = 
-            "--- KASOS OPERACIJOS (pavyzdys) ---\n" +
-            JSON.stringify(sampleTransactions, null, 2) +
-            "\n\n--- GAUTOS SĄSKAITOS (pavyzdys) ---\n" +
-            JSON.stringify(sampleInvoices, null, 2) +
-            "\n\n--- IŠRAŠYTOS SĄSKAITOS (pavyzdys) ---\n" +
-            JSON.stringify(sampleDrafts, null, 2);
-
-        Alert.alert("Diagnostiniai Duomenys", debugString, [{ text: "Gerai" }]);
     };
 
     return (
@@ -55,22 +31,9 @@ export default function DangerZoneScreen() {
                 <Text style={globalStyles.listTitle}>Pavojinga Zona</Text>
                 
                 <SettingsItem
-                    title="Rodyti duomenis diagnostikai"
-                    icon="🐛"
-                    onPress={showDebugData}
-                />
-                
-                <SettingsItem
-                    title="Išvalyti visas sąskaitas"
-                    icon="🗑️"
-                    onPress={handleClearInvoices}
-                    isDanger={true}
-                />
-                
-                <SettingsItem
-                    title="Išvalyti visus kasos duomenis"
+                    title="Išvalyti VISUS Programėlės Duomenis"
                     icon="🔥"
-                    onPress={handleClearCashData}
+                    onPress={handleClearAllData}
                     isDanger={true}
                 />
             </View>

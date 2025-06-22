@@ -20,12 +20,11 @@ export const CashProvider = ({ children }) => {
                 const safe = await AsyncStorage.getItem(C.STORAGE_KEY_CURRENT_SAFE_BALANCE);
                 const bank = await AsyncStorage.getItem(C.STORAGE_KEY_CURRENT_BANK_BALANCE);
                 const storedTransactions = await AsyncStorage.getItem(C.STORAGE_KEY_TRANSACTIONS);
-
                 setCashRegisterBalance(cash ? parseFloat(cash) : 0);
                 setSafeBalance(safe ? parseFloat(safe) : 0);
                 setBankBalance(bank ? parseFloat(bank) : 0);
                 setTransactions(storedTransactions ? JSON.parse(storedTransactions) : []);
-            } catch (e) { console.error("Failed to load balances", e); } 
+            } catch (e) { console.error("Failed to load cash balances", e); } 
             finally { setLoading(false); }
         };
         loadBalances();
@@ -39,9 +38,12 @@ export const CashProvider = ({ children }) => {
     const addTransaction = (type, amount, updatedCash, updatedSafe, updatedBank, description = '', timestamp = null) => {
         const newTransaction = {
             id: Date.now() + Math.random(),
-            type: type, amount: amount, cashRegisterBalance: updatedCash,
-            safeBalance: updatedSafe, bankBalance: updatedBank,
-            description: description, timestamp: timestamp || new Date().toISOString(),
+            type: type, amount: amount,
+            cashRegisterBalance: updatedCash,
+            safeBalance: updatedSafe,
+            bankBalance: updatedBank,
+            description: description,
+            timestamp: timestamp || new Date().toISOString(),
         };
         setTransactions(prev => [newTransaction, ...prev]);
     };
@@ -55,12 +57,10 @@ export const CashProvider = ({ children }) => {
             const initialCash = await AsyncStorage.getItem(C.STORAGE_KEY_INITIAL_CASH_BALANCE) || '0';
             const initialSafe = await AsyncStorage.getItem(C.STORAGE_KEY_INITIAL_SAFE_BALANCE) || '0';
             const initialBank = await AsyncStorage.getItem(C.STORAGE_KEY_INITIAL_BANK_BALANCE) || '0';
-
             setCashRegisterBalance(parseFloat(initialCash));
             setSafeBalance(parseFloat(initialSafe));
             setBankBalance(parseFloat(initialBank));
             setTransactions([]);
-            
             showCustomAlert("Atlikta", "Visos kasos operacijos ištrintos, o likučiai atstatyti į pradinius.");
         } catch (e) {
             console.error("Failed to clear cash data", e);
